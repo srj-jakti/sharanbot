@@ -62,6 +62,14 @@ class ToolRegistry:
         if not tool:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
 
+        # Repetition detection for exec commands
+        if name == "exec" and self._recovery_engine:
+            cmd = params.get("command", "")
+            if cmd:
+                loop_warning = self._recovery_engine.track_command(cmd)
+                if loop_warning:
+                    return loop_warning
+
         retries_left = self._MAX_TOOL_RETRIES if self._recovery_engine else 0
 
         for attempt in range(1 + retries_left):
@@ -113,7 +121,8 @@ class ToolRegistry:
         recoverable_markers = (
             "timeout", "timed out", "connection", "disconnected",
             "server error", "temporarily", "mcp", "unavailable",
-            "refused", "reset", "broken pipe",
+            "refused", "reset", "broken pipe", "permission denied",
+            "access denied", "EACCES",
         )
         return any(m in err_lower for m in recoverable_markers)
 

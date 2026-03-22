@@ -31,6 +31,8 @@ class ErrorCategory(str, Enum):
     STUCK_AGENT = "stuck_agent"
     GATEWAY_ERROR = "gateway_error"
     TIMEOUT = "timeout"
+    PERMISSION_ERROR = "permission_error"
+    REPEATED_FAILURE = "repeated_failure"
 
 
 @dataclass
@@ -68,6 +70,7 @@ class RecoveryEngine:
 
     # Pattern → category mapping for error classification
     _ERROR_PATTERNS: list[tuple[str, ErrorCategory]] = [
+        (r"permission\s*denied|access.*denied|EACCES|EPERM|not permitted|requires elevation|requires admin|run as admin", ErrorCategory.PERMISSION_ERROR),
         (r"429|rate.?limit|too many requests|quota", ErrorCategory.RATE_LIMIT),
         (r"timeout|timed?\s*out|deadline exceeded", ErrorCategory.TIMEOUT),
         (r"mcp|model context protocol|server disconnected", ErrorCategory.MCP_FAILURE),
@@ -85,6 +88,8 @@ class RecoveryEngine:
         ErrorCategory.TOOL_ERROR: 5,
         ErrorCategory.STUCK_WORKER: 2,
         ErrorCategory.TIMEOUT: 3,
+        ErrorCategory.PERMISSION_ERROR: 2,
+        ErrorCategory.REPEATED_FAILURE: 3,
     }
 
     def __init__(self, learning: LearningStore, agent: AgentLoop | None = None):
@@ -263,6 +268,8 @@ class RecoveryEngine:
             ErrorCategory.STUCK_AGENT: 3.0,
             ErrorCategory.TIMEOUT: 5.0,
             ErrorCategory.GATEWAY_ERROR: 5.0,
+            ErrorCategory.PERMISSION_ERROR: 0.5,
+            ErrorCategory.REPEATED_FAILURE: 1.0,
         }.get(category, 3.0)
 
     # ------------------------------------------------------------------
@@ -308,6 +315,17 @@ class RecoveryEngine:
             category=ErrorCategory.TIMEOUT,
             description="Retry with extended timeout",
         ))
+        self._register(ErrorCategory.PERMISSION_ERROR, RecoveryAction(
+            name="permission_fix",
+            handler=self._recover_permission,
+            category=ErrorCategory.PERMISSION_ERROR,
+            description="Retry with --user flag or elevated permissions",
+        ))
+
+        # Repetition tracker for detecting stuck command loops
+        self._recent_commands: list[str] = []  # rolling window of recent exec commands
+        self._REPEAT_WINDOW = 6  # how many recent commands to track
+        self._REPEAT_THRESHOLD = 3  # how many similar commands before flagging
 
     def _register(self, category: ErrorCategory, action: RecoveryAction) -> None:
         self._recovery_handlers.setdefault(category, []).append(action)
@@ -396,6 +414,58 @@ class RecoveryEngine:
     ) -> bool:
         """Handle timeout: signal that retry with extended timeout is OK."""
         return True
+
+    async def _recover_permission(
+        self, component: str, error: Any, context: dict[str, Any],
+    ) -> bool:
+        """Handle permission errors: suggest --user flag, avoid requiring admin."""
+        logger.info("Permission recovery: suggesting --user install or alternative approach")
+        # Record the fix so the learning store knows to use --user next time
+        self.learning.record(
+            category="permission_error",
+            error_signature=f"permission_error:{component}",
+            description=str(error)[:200],
+            fix_applied="Retry with --user flag for pip, or use venv",
+            success=True,
+        )
+        return True
+
+    def track_command(self, command: str) -> str | None:
+        """Track an exec command and detect repetitive stuck loops.
+
+        Returns a warning message if a repeated-failure pattern is detected,
+        or None if the command appears normal.
+        """
+        # Normalize: strip whitespace, lowercase, remove variable parts (PIDs, ports)
+        normalized = re.sub(r"\b\d{3,}\b", "NUM", command.strip().lower())
+        normalized = re.sub(r"\s+", " ", normalized)
+
+        self._recent_commands.append(normalized)
+        if len(self._recent_commands) > self._REPEAT_WINDOW:
+            self._recent_commands = self._recent_commands[-self._REPEAT_WINDOW:]
+
+        # Count how many recent commands share the same base pattern
+        # (same first 3 words = likely same approach)
+        if len(self._recent_commands) >= self._REPEAT_THRESHOLD:
+            base = " ".join(normalized.split()[:3])
+            similar = sum(
+                1 for c in self._recent_commands
+                if " ".join(c.split()[:3]) == base
+            )
+            if similar >= self._REPEAT_THRESHOLD:
+                self.trip_circuit("exec_loop", ErrorCategory.REPEATED_FAILURE)
+                logger.warning(
+                    "Repeated failure detected: '{}' attempted {}x in {} commands",
+                    base, similar, len(self._recent_commands),
+                )
+                return (
+                    f"WARNING: You have attempted a similar command ({base}...) "
+                    f"{similar} times without success. STOP this approach and try "
+                    f"a fundamentally different strategy. Analyze the root cause "
+                    f"before retrying. Consider: different tool, different port, "
+                    f"different mode, or checking prerequisites first."
+                )
+        return None
 
     # ------------------------------------------------------------------
     # Health Check
