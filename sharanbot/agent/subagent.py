@@ -51,6 +51,7 @@ class SubagentManager:
         )
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        self._max_depth = 3  # Maximum nesting depth to prevent runaway spawning
 
     async def spawn(
         self,
@@ -60,14 +61,18 @@ class SubagentManager:
         origin_chat_id: str = "direct",
         session_key: str | None = None,
         profile: str | None = None,
+        depth: int = 0,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
+        if depth >= self._max_depth:
+            return f"Cannot spawn subagent: maximum nesting depth ({self._max_depth}) reached."
+
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id}
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin, profile=profile)
+            self._run_subagent(task_id, task, display_label, origin, profile=profile, depth=depth)
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -92,6 +97,7 @@ class SubagentManager:
         label: str,
         origin: dict[str, str],
         profile: str | None = None,
+        depth: int = 0,
     ) -> None:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
@@ -102,8 +108,10 @@ class SubagentManager:
             agent_profile = self.profile_registry.get(profile)
 
         # Determine model and max_iterations from profile or defaults
+        # Reduce iterations at deeper nesting levels (40 → 25 → 15)
+        base_max_iter = (agent_profile.max_iterations if agent_profile and agent_profile.max_iterations else 15)
         subagent_model = (agent_profile.model if agent_profile and agent_profile.model else self.model)
-        subagent_max_iter = (agent_profile.max_iterations if agent_profile and agent_profile.max_iterations else 15)
+        subagent_max_iter = max(10, base_max_iter - (depth * 10))
 
         try:
             # Build subagent tools (no message tool, no spawn tool)
@@ -122,6 +130,13 @@ class SubagentManager:
             ))
             tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
             tools.register(WebFetchTool(proxy=self.web_proxy))
+
+            # Allow nested spawning if depth allows
+            if depth + 1 < self._max_depth:
+                from sharanbot.agent.tools.spawn import SpawnTool
+                nested_spawn = SpawnTool(manager=self)
+                nested_spawn._depth = depth + 1  # Track depth for nested spawns
+                tools.register(nested_spawn)
 
             # Apply profile tool filtering
             if agent_profile and agent_profile.denied_tools:

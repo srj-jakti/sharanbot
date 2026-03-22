@@ -35,6 +35,7 @@ from sharanbot.agent.worker_registry import WorkerTypeRegistry
 from sharanbot.agent.team.orchestrator import TeamOrchestrator
 from sharanbot.agent.team.tools import TeamCreateTool, TeamStatusTool, TeamSteerTool
 from sharanbot.agent.team.autopilot import Autopilot
+from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -199,6 +200,12 @@ class AgentLoop:
         self.tools.register(TeamCreateTool(orchestrator=self.team_orchestrator))
         self.tools.register(TeamStatusTool(orchestrator=self.team_orchestrator))
         self.tools.register(TeamSteerTool(orchestrator=self.team_orchestrator))
+
+        # Agent import tool
+        self.tools.register(ImportAgentTool(
+            plugins_dir=self.workspace / "plugins" / "agents",
+            agent_loop=self,
+        ))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

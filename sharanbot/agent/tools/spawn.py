@@ -16,6 +16,7 @@ class SpawnTool(Tool):
         self._origin_channel = "cli"
         self._origin_chat_id = "direct"
         self._session_key = "cli:direct"
+        self._depth = 0  # Current nesting depth
 
     def set_context(self, channel: str, chat_id: str) -> None:
         """Set the origin context for subagent announcements."""
@@ -67,4 +68,5 @@ class SpawnTool(Tool):
             origin_chat_id=self._origin_chat_id,
             session_key=self._session_key,
             profile=profile,
+            depth=self._depth,
         )
