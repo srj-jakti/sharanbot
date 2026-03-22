@@ -32,6 +32,9 @@ from sharanbot.agent.tools.evolve import EvolveTool
 from sharanbot.agent.tools.dynamic import DynamicToolLoader
 from sharanbot.agent.profiles import AgentProfileRegistry
 from sharanbot.agent.worker_registry import WorkerTypeRegistry
+from sharanbot.agent.team.orchestrator import TeamOrchestrator
+from sharanbot.agent.team.tools import TeamCreateTool, TeamStatusTool, TeamSteerTool
+from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -128,6 +131,18 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._processing_lock = asyncio.Lock()
+
+        # Team orchestration
+        self.team_orchestrator = TeamOrchestrator(
+            provider=provider,
+            model=self.model,
+            profile_registry=self.agent_profile_registry,
+            subagent_manager=self.subagents,
+            message_bus=bus,
+            workspace=workspace,
+        )
+        self.autopilot = Autopilot(provider=provider, model=self.model)
+
         self.memory_consolidator = MemoryConsolidator(
             workspace=workspace,
             provider=provider,
@@ -179,6 +194,11 @@ class AgentLoop:
         # Meta-tools: reload & evolve (always available)
         self.tools.register(ReloadTool(agent_loop=self))
         self.tools.register(EvolveTool(agent_loop=self))
+
+        # Team orchestration tools
+        self.tools.register(TeamCreateTool(orchestrator=self.team_orchestrator))
+        self.tools.register(TeamStatusTool(orchestrator=self.team_orchestrator))
+        self.tools.register(TeamSteerTool(orchestrator=self.team_orchestrator))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -264,7 +284,7 @@ class AgentLoop:
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron"):
+        for name in ("message", "spawn", "cron", "team_create"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
