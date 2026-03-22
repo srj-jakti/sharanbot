@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0a"/>
+      <stop offset="50%" style="stop-color:#1a0a2e"/>
+      <stop offset="100%" style="stop-color:#0d0d0d"/>
+    </linearGradient>
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2a1a3e"/>
+      <stop offset="100%" style="stop-color:#0f0a1a"/>
+    </linearGradient>
+    <linearGradient id="hornGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b0000"/>
+      <stop offset="50%" style="stop-color:#ff2200"/>
+      <stop offset="100%" style="stop-color:#ff6600"/>
+    </linearGradient>
+    <linearGradient id="eyeGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff0000"/>
+      <stop offset="100%" style="stop-color:#ff4400"/>
+    </linearGradient>
+    <linearGradient id="crownGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b6914"/>
+      <stop offset="50%" style="stop-color:#ffd700"/>
+      <stop offset="100%" style="stop-color:#ffec8b"/>
+    </linearGradient>
+    <filter id="glowRed">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowRedStrong">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowGold">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="250" fill="url(#bgGrad)" stroke="#ff2200" stroke-width="3" opacity="0.9"/>
+  
+  <!-- Outer ring glow -->
+  <circle cx="256" cy="256" r="248" fill="none" stroke="#ff4400" stroke-width="1" opacity="0.4"/>
+  <circle cx="256" cy="256" r="244" fill="none" stroke="#ff2200" stroke-width="0.5" opacity="0.2"/>
+
+  <!-- Left horn -->
+  <path d="M155 195 L120 80 L100 60 L135 100 L175 190" fill="url(#hornGrad)" filter="url(#glowRed)"/>
+  <!-- Right horn -->
+  <path d="M357 195 L392 80 L412 60 L377 100 L337 190" fill="url(#hornGrad)" filter="url(#glowRed)"/>
+  
+  <!-- Inner horn details -->
+  <path d="M160 190 L130 95 L140 105 L168 190" fill="#ff4400" opacity="0.5"/>
+  <path d="M352 190 L382 95 L372 105 L344 190" fill="#ff4400" opacity="0.5"/>
+
+  <!-- Robot head - main shape -->
+  <rect x="140" y="180" width="232" height="200" rx="30" ry="30" fill="url(#bodyGrad)" stroke="#3a2a4e" stroke-width="2" filter="url(#shadow)"/>
+  
+  <!-- Head top plate -->
+  <rect x="150" y="180" width="212" height="20" rx="10" fill="#3a2a5e" opacity="0.6"/>
+  
+  <!-- Forehead circuit lines -->
+  <line x1="180" y1="210" x2="220" y2="210" stroke="#ff2200" stroke-width="1" opacity="0.4"/>
+  <line x1="292" y1="210" x2="332" y2="210" stroke="#ff2200" stroke-width="1" opacity="0.4"/>
+  <circle cx="256" cy="210" r="4" fill="#ff4400" opacity="0.6"/>
+
+  <!-- Left eye socket -->
+  <rect x="170" y="235" width="65" height="50" rx="8" fill="#0a0a0a" stroke="#ff2200" stroke-width="2"/>
+  <!-- Right eye socket -->
+  <rect x="277" y="235" width="65" height="50" rx="8" fill="#0a0a0a" stroke="#ff2200" stroke-width="2"/>
+  
+  <!-- Left eye - angry slant -->
+  <polygon points="178,245 228,252 228,275 178,268" fill="url(#eyeGlow)" filter="url(#glowRedStrong)"/>
+  <!-- Right eye - angry slant -->
+  <polygon points="334,245 284,252 284,275 334,268" fill="url(#eyeGlow)" filter="url(#glowRedStrong)"/>
+  
+  <!-- Eye pupils -->
+  <circle cx="205" cy="260" r="8" fill="#fff" opacity="0.9"/>
+  <circle cx="307" cy="260" r="8" fill="#fff" opacity="0.9"/>
+  <circle cx="207" cy="259" r="4" fill="#0a0a0a"/>
+  <circle cx="309" cy="259" r="4" fill="#0a0a0a"/>
+
+  <!-- Angry eyebrows -->
+  <line x1="165" y1="232" x2="240" y2="240" stroke="#ff2200" stroke-width="5" stroke-linecap="round" filter="url(#glowRed)"/>
+  <line x1="347" y1="232" x2="272" y2="240" stroke="#ff2200" stroke-width="5" stroke-linecap="round" filter="url(#glowRed)"/>
+
+  <!-- Nose vent -->
+  <rect x="245" y="290" width="22" height="8" rx="4" fill="#1a1a2e" stroke="#3a2a4e" stroke-width="1"/>
+
+  <!-- Mouth - evil grin with fangs -->
+  <path d="M185 320 Q195 310 210 315 L225 318 L240 315 L256 320 L272 315 L287 318 L302 315 Q317 310 327 320 Q310 345 256 348 Q202 345 185 320Z" fill="#0a0a0a" stroke="#ff2200" stroke-width="2"/>
+  
+  <!-- Teeth -->
+  <polygon points="200,320 210,340 220,320" fill="#e0e0e0"/>
+  <polygon points="230,318 237,338 244,318" fill="#e0e0e0"/>
+  <polygon points="268,318 275,338 282,318" fill="#e0e0e0"/>
+  <polygon points="292,320 302,340 312,320" fill="#e0e0e0"/>
+  
+  <!-- Fangs (longer) -->
+  <polygon points="190,320 198,348 206,320" fill="#ffffff" filter="url(#glowRed)"/>
+  <polygon points="306,320 314,348 322,320" fill="#ffffff" filter="url(#glowRed)"/>
+
+  <!-- Jaw line -->
+  <path d="M155 365 Q256 400 357 365" fill="none" stroke="#3a2a4e" stroke-width="2" opacity="0.6"/>
+
+  <!-- Crown on head -->
+  <g filter="url(#glowGold)">
+    <!-- Crown base -->
+    <rect x="185" y="165" width="142" height="22" rx="3" fill="url(#crownGrad)"/>
+    <!-- Crown points -->
+    <polygon points="190,165 200,140 210,165" fill="url(#crownGrad)"/>
+    <polygon points="225,165 237,130 249,165" fill="url(#crownGrad)"/>
+    <polygon points="248,165 256,125 264,165" fill="url(#crownGrad)"/>
+    <polygon points="263,165 275,130 287,165" fill="url(#crownGrad)"/>
+    <polygon points="302,165 312,140 322,165" fill="url(#crownGrad)"/>
+    <!-- Crown jewels -->
+    <circle cx="200" cy="150" r="4" fill="#ff0000" filter="url(#glowRed)"/>
+    <circle cx="256" cy="137" r="5" fill="#ff0000" filter="url(#glowRed)"/>
+    <circle cx="312" cy="150" r="4" fill="#ff0000" filter="url(#glowRed)"/>
+    <!-- Crown detail lines -->
+    <line x1="190" y1="175" x2="322" y2="175" stroke="#8b6914" stroke-width="1" opacity="0.5"/>
+  </g>
+
+  <!-- Ear bolts -->
+  <circle cx="135" cy="270" r="15" fill="#2a1a3e" stroke="#ff2200" stroke-width="2"/>
+  <circle cx="135" cy="270" r="6" fill="#ff4400" opacity="0.7"/>
+  <circle cx="377" cy="270" r="15" fill="#2a1a3e" stroke="#ff2200" stroke-width="2"/>
+  <circle cx="377" cy="270" r="6" fill="#ff4400" opacity="0.7"/>
+
+  <!-- Neck -->
+  <rect x="220" y="375" width="72" height="25" rx="5" fill="url(#bodyGrad)" stroke="#3a2a4e" stroke-width="1.5"/>
+  <line x1="235" y1="378" x2="235" y2="398" stroke="#ff2200" stroke-width="1" opacity="0.3"/>
+  <line x1="256" y1="378" x2="256" y2="398" stroke="#ff2200" stroke-width="1" opacity="0.3"/>
+  <line x1="277" y1="378" x2="277" y2="398" stroke="#ff2200" stroke-width="1" opacity="0.3"/>
+
+  <!-- Shoulder plates -->
+  <path d="M130 400 Q140 385 220 395 L220 425 Q140 420 130 410 Z" fill="url(#bodyGrad)" stroke="#3a2a4e" stroke-width="1.5"/>
+  <path d="M382 400 Q372 385 292 395 L292 425 Q372 420 382 410 Z" fill="url(#bodyGrad)" stroke="#3a2a4e" stroke-width="1.5"/>
+  
+  <!-- Shoulder spikes -->
+  <polygon points="135,395 120,380 145,405" fill="url(#hornGrad)" opacity="0.8"/>
+  <polygon points="377,395 392,380 367,405" fill="url(#hornGrad)" opacity="0.8"/>
+
+  <!-- Chest plate -->
+  <rect x="195" y="400" width="122" height="60" rx="10" fill="url(#bodyGrad)" stroke="#3a2a4e" stroke-width="1.5"/>
+  
+  <!-- Chest "S" emblem -->
+  <g filter="url(#glowRed)">
+    <text x="256" y="442" font-family="Arial Black, Arial" font-weight="900" font-size="38" fill="#ff2200" text-anchor="middle" dominant-baseline="middle">S</text>
+  </g>
+  
+  <!-- Chest circuit lines -->
+  <line x1="200" y1="410" x2="220" y2="410" stroke="#ff4400" stroke-width="1" opacity="0.4"/>
+  <line x1="292" y1="410" x2="312" y2="410" stroke="#ff4400" stroke-width="1" opacity="0.4"/>
+
+  <!-- Energy particles around -->
+  <circle cx="100" cy="150" r="2" fill="#ff4400" opacity="0.6">
+    <animate attributeName="opacity" values="0.6;0.1;0.6" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="412" cy="140" r="2" fill="#ff4400" opacity="0.5">
+    <animate attributeName="opacity" values="0.5;0.1;0.5" dur="1.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="80" cy="350" r="1.5" fill="#ff2200" opacity="0.4">
+    <animate attributeName="opacity" values="0.4;0.1;0.4" dur="2.2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="430" cy="370" r="1.5" fill="#ff2200" opacity="0.5">
+    <animate attributeName="opacity" values="0.5;0.1;0.5" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Bottom text -->
+  <text x="256" y="495" font-family="Arial Black, Arial" font-weight="900" font-size="20" fill="#ff2200" text-anchor="middle" letter-spacing="6" filter="url(#glowRed)">SHARANBOT</text>
+</svg>
