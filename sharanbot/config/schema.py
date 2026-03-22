@@ -149,6 +149,14 @@ class WorkerConfig(Base):
     enable: bool = True  # Enable worker tools
 
 
+class DashboardConfig(Base):
+    """Real-time dashboard server configuration."""
+
+    enable: bool = True
+    host: str = "127.0.0.1"
+    port: int = 18791
+
+
 class Config(BaseSettings):
     """Root configuration for sharanbot."""
 
@@ -158,6 +166,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     worker: WorkerConfig = Field(default_factory=WorkerConfig)
+    dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
 
     @property
     def workspace_path(self) -> Path:

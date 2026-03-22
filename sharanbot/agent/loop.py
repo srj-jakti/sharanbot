@@ -45,6 +45,8 @@ from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
 from sharanbot.providers.base import LLMProvider
 from sharanbot.session.manager import Session, SessionManager
+from sharanbot.vault import Vault
+from sharanbot.services.manager import ServiceManager
 
 if TYPE_CHECKING:
     from sharanbot.agent.worker import WorkerManager
@@ -146,7 +148,7 @@ class AgentLoop:
             message_bus=bus,
             workspace=workspace,
         )
-        self.autopilot = Autopilot(provider=provider, model=self.model)
+        self.autopilot = Autopilot(provider=provider, model=self.model, workspace=workspace)
 
         self.memory_consolidator = MemoryConsolidator(
             workspace=workspace,
@@ -167,6 +169,15 @@ class AgentLoop:
         self.subagents.set_recovery_engine(self.recovery_engine)
         if self.worker_manager:
             self.worker_manager.set_recovery_engine(self.recovery_engine)
+
+        # Proactive autopilot: connect learning store
+        self.autopilot.set_learning_store(self.learning_store)
+
+        # Vault (encrypted credential store)
+        self.vault = Vault(workspace)
+
+        # Service manager (autonomous apps, monitors, agents)
+        self.service_manager = ServiceManager(workspace)
 
         self._register_default_tools()
 

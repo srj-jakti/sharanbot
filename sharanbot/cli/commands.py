@@ -719,11 +719,24 @@ def gateway(
     console.print(f"[green]✓[/green] Worker types: {len(worker_type_registry.list_types())} available")
     console.print(f"[green]✓[/green] Agent profiles: {len(agent_profile_registry.list_profiles())} available")
 
+    # Dashboard server (real-time UI)
+    dashboard_server = None
+    if config.dashboard.enable:
+        from sharanbot.dashboard.server import DashboardServer
+        dashboard_server = DashboardServer(
+            host=config.dashboard.host,
+            port=config.dashboard.port,
+            agent_loop=agent,
+        )
+        console.print(f"[green]✓[/green] Dashboard: http://{config.dashboard.host}:{config.dashboard.port}")
+
     async def run():
         try:
             await cron.start()
             await heartbeat.start()
             await config_watcher.start()
+            if dashboard_server:
+                await dashboard_server.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -735,6 +748,8 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            if dashboard_server:
+                await dashboard_server.stop()
             config_watcher.stop()
             await agent.close_mcp()
             if worker_mgr:

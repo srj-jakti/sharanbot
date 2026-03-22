@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SharanBot Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--red:#ff2200;--gold:#ffd700;--green:#00ff88;--blue:#4488ff;--text:#e0e0e0;--dim:#666;--orange:#ff8800}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a0a2e,#0d0d1a);border-bottom:2px solid var(--red);padding:12px 24px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:22px;color:var(--red);letter-spacing:2px;font-weight:900}
+.header .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.header .subtitle{color:var(--dim);font-size:13px;margin-left:auto}
+.nav{background:#0f0f18;border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0}
+.nav button{background:none;border:none;color:var(--dim);padding:12px 20px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:all .2s}
+.nav button:hover{color:var(--text)}
+.nav button.active{color:var(--red);border-bottom-color:var(--red)}
+.main{padding:20px 24px;max-width:1400px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-card .value{font-size:32px;font-weight:900;color:var(--red)}
+.stat-card .label{font-size:12px;color:var(--dim);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+.stat-card.green .value{color:var(--green)}
+.stat-card.blue .value{color:var(--blue)}
+.stat-card.orange .value{color:var(--orange)}
+.stat-card.gold .value{color:var(--gold)}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+.panel h2{font-size:15px;color:var(--red);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h2 .icon{font-size:18px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:8px 12px;border-bottom:1px solid var(--border)}
+td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge.running{background:#00ff8822;color:var(--green);border:1px solid #00ff8844}
+.badge.stopped{background:#66666622;color:var(--dim);border:1px solid #66666644}
+.badge.error{background:#ff220022;color:var(--red);border:1px solid #ff220044}
+.badge.completed{background:#4488ff22;color:var(--blue);border:1px solid #4488ff44}
+.badge.pending{background:#ff880022;color:var(--orange);border:1px solid #ff880044}
+.log-box{background:#06060a;border:1px solid var(--border);border-radius:6px;padding:12px;max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;line-height:1.6;color:#aaa}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.empty{color:var(--dim);text-align:center;padding:40px;font-size:14px}
+.section{display:none}
+.section.active{display:block}
+.circuit{display:inline-flex;align-items:center;gap:6px;margin:4px 8px}
+.circuit .dot{width:8px;height:8px;border-radius:50%}
+.circuit .dot.closed{background:var(--green)}
+.circuit .dot.open{background:var(--red)}
+.circuit .name{font-size:12px;color:var(--text)}
+.vault-key{background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin:4px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.vault-key .k{color:var(--gold);font-family:monospace}
+.vault-key .masked{color:var(--dim)}
+.ws-status{font-size:11px;padding:4px 8px;border-radius:4px}
+.ws-status.connected{background:#00ff8822;color:var(--green)}
+.ws-status.disconnected{background:#ff220022;color:var(--red)}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="status-dot" id="wsDot"></div>
+  <h1>SHARANBOT</h1>
+  <span id="wsStatus" class="ws-status disconnected">CONNECTING...</span>
+  <span class="subtitle" id="clock"></span>
+</div>
+<div class="nav">
+  <button class="active" data-tab="overview">Overview</button>
+  <button data-tab="services">Services</button>
+  <button data-tab="teams">Teams</button>
+  <button data-tab="health">Health</button>
+  <button data-tab="vault">Vault</button>
+  <button data-tab="logs">Logs</button>
+</div>
+<div class="main">
+
+  <!-- OVERVIEW -->
+  <div class="section active" id="tab-overview">
+    <div class="grid">
+      <div class="stat-card green"><div class="value" id="svcRunning">0</div><div class="label">Services Running</div></div>
+      <div class="stat-card blue"><div class="value" id="teamCount">0</div><div class="label">Teams</div></div>
+      <div class="stat-card orange"><div class="value" id="cronCount">0</div><div class="label">Cron Jobs</div></div>
+      <div class="stat-card gold"><div class="value" id="learnCount">0</div><div class="label">Patterns Learned</div></div>
+      <div class="stat-card"><div class="value" id="svcTotal">0</div><div class="label">Total Services</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">⚡</span> Live Activity</h2>
+      <div id="liveActivity" class="log-box"><div class="empty">Waiting for data...</div></div>
+    </div>
+  </div>
+
+  <!-- SERVICES -->
+  <div class="section" id="tab-services">
+    <div class="panel">
+      <h2><span class="icon">🔥</span> Autonomous Services</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Kind</th><th>Status</th><th>PID</th><th>Uptime</th><th>Restarts</th></tr></thead>
+        <tbody id="svcTable"></tbody>
+      </table>
+      <div class="empty" id="svcEmpty">No services registered</div>
+    </div>
+  </div>
+
+  <!-- TEAMS -->
+  <div class="section" id="tab-teams">
+    <div class="panel">
+      <h2><span class="icon">👥</span> Agent Teams</h2>
+      <table>
+        <thead><tr><th>Team ID</th><th>Task</th><th>Status</th><th>Progress</th></tr></thead>
+        <tbody id="teamTable"></tbody>
+      </table>
+      <div class="empty" id="teamEmpty">No active teams</div>
+    </div>
+  </div>
+
+  <!-- HEALTH -->
+  <div class="section" id="tab-health">
+    <div class="panel">
+      <h2><span class="icon">🛡️</span> Circuit Breakers</h2>
+      <div id="circuits"><div class="empty">No circuit data</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">🧠</span> Learning Store</h2>
+      <div id="learning"><div class="empty">No learning data</div></div>
+    </div>
+  </div>
+
+  <!-- VAULT -->
+  <div class="section" id="tab-vault">
+    <div class="panel">
+      <h2><span class="icon">🔐</span> Encrypted Vault</h2>
+      <div id="vaultKeys"><div class="empty">Vault not configured</div></div>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+  <div class="section" id="tab-logs">
+    <div class="panel">
+      <h2><span class="icon">📋</span> System Logs</h2>
+      <div id="systemLogs" class="log-box"><div class="empty">No logs yet</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+// Tab switching
+$$('.nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.nav button').forEach(b => b.classList.remove('active'));
+    $$('.section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    $(`#tab-${btn.dataset.tab}`).classList.add('active');
+  });
+});
+
+// Clock
+setInterval(() => {
+  $('#clock').textContent = new Date().toLocaleString();
+}, 1000);
+
+// WebSocket
+let ws = null;
+let logBuffer = [];
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    $('#wsStatus').textContent = 'CONNECTED';
+    $('#wsStatus').className = 'ws-status connected';
+    $('#wsDot').style.background = 'var(--green)';
+    addLog('Dashboard connected');
+  };
+
+  ws.onclose = () => {
+    $('#wsStatus').textContent = 'DISCONNECTED';
+    $('#wsStatus').className = 'ws-status disconnected';
+    $('#wsDot').style.background = 'var(--red)';
+    addLog('Dashboard disconnected — reconnecting...');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'snapshot' || msg.type === 'update') {
+        updateDashboard(msg.data);
+      } else if (msg.type === 'logs') {
+        showServiceLogs(msg);
+      }
+    } catch(e) {}
+  };
+}
+
+function updateDashboard(data) {
+  // Stats
+  if (data.services) {
+    $('#svcRunning').textContent = data.services.running || 0;
+    $('#svcTotal').textContent = data.services.total || 0;
+    renderServices(data.services.services || []);
+  }
+  $('#teamCount').textContent = (data.teams || []).length;
+  $('#cronCount').textContent = data.cron_jobs || 0;
+
+  // Learning
+  if (data.learning_summary) {
+    $('#learnCount').textContent = data.learning_summary.total_entries || 0;
+    renderLearning(data.learning_summary);
+  }
+
+  // Teams
+  renderTeams(data.teams || []);
+
+  // Health
+  if (data.health) {
+    renderHealth(data.health);
+  }
+}
+
+function renderServices(services) {
+  const tbody = $('#svcTable');
+  const empty = $('#svcEmpty');
+  if (!services.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = services.map(s => `
+    <tr>
+      <td>${esc(s.name)}</td>
+      <td>${esc(s.kind)}</td>
+      <td><span class="badge ${s.status}">${s.status}</span></td>
+      <td>${s.pid || '-'}</td>
+      <td>${formatUptime(s.uptime_s)}</td>
+      <td>${s.restart_count}</td>
+    </tr>
+  `).join('');
+}
+
+function renderTeams(teams) {
+  const tbody = $('#teamTable');
+  const empty = $('#teamEmpty');
+  if (!teams.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = teams.map(t => {
+    const p = t.progress || {};
+    return `
+      <tr>
+        <td>${esc(t.team_id)}</td>
+        <td>${esc(t.task)}</td>
+        <td><span class="badge ${t.status}">${t.status}</span></td>
+        <td>${p.completed || 0}/${p.total || 0}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderHealth(health) {
+  const el = $('#circuits');
+  if (health.circuits) {
+    el.innerHTML = Object.entries(health.circuits).map(([name, state]) => {
+      const isOpen = state.is_open || state === 'open';
+      return `<div class="circuit">
+        <span class="dot ${isOpen ? 'open' : 'closed'}"></span>
+        <span class="name">${esc(name)}${isOpen ? ' (OPEN)' : ''}</span>
+      </div>`;
+    }).join('');
+  } else {
+    el.innerHTML = '<div class="empty">All circuits healthy</div>';
+  }
+}
+
+function renderLearning(summary) {
+  const el = $('#learning');
+  if (summary.total_entries > 0) {
+    let html = `<div style="color:var(--dim);font-size:13px;margin-bottom:8px">
+      Total patterns: ${summary.total_entries} | Successful fixes: ${summary.successful_fixes || 0}
+    </div>`;
+    if (summary.by_category) {
+      html += Object.entries(summary.by_category).map(([cat, count]) =>
+        `<span class="badge pending" style="margin:2px">${cat}: ${count}</span>`
+      ).join('');
+    }
+    el.innerHTML = html;
+  }
+}
+
+function addLog(msg) {
+  logBuffer.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+  if (logBuffer.length > 200) logBuffer = logBuffer.slice(-200);
+  const el = $('#liveActivity');
+  el.innerHTML = logBuffer.slice(-30).map(l => `<div class="log-line">${esc(l)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function formatUptime(s) {
+  if (!s || s <= 0) return '-';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+// Load vault keys
+async function loadVault() {
+  try {
+    const res = await fetch('/api/vault/keys');
+    const data = await res.json();
+    const el = $('#vaultKeys');
+    if (data.keys && data.keys.length) {
+      el.innerHTML = data.keys.map(k =>
+        `<div class="vault-key"><span class="k">${esc(k)}</span><span class="masked">••••••••</span></div>`
+      ).join('');
+    }
+  } catch(e) {}
+}
+
+connect();
+loadVault();
+</script>
+</body>
+</html>
