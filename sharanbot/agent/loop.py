@@ -38,6 +38,7 @@ from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.agent.tools.browser import BrowserTool
 from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
+from sharanbot.agent.tools.computer import ComputerTool
 from sharanbot.agent.tools.wingman import WingmanTaskTool, WingmanChatTool
 from sharanbot.agent.tools.sandbox import SandboxTool
 from sharanbot.agent.learning import LearningStore
@@ -238,6 +239,11 @@ class AgentLoop:
         # Browser tool — prefer Tandem Browser (Electron) when available,
         # fall back to headless Playwright otherwise.
         self.tools.register(TandemBrowserTool(
+            screenshots_dir=self.workspace / "screenshots",
+        ))
+
+        # Computer tool — coordinate-based mouse, keyboard, and screenshot
+        self.tools.register(ComputerTool(
             screenshots_dir=self.workspace / "screenshots",
         ))
 

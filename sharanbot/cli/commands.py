@@ -742,6 +742,23 @@ def gateway(
     else:
         console.print("[yellow]Warning: tandem-browser directory not found — browser tool will not work[/yellow]")
 
+    # OpenClaw Bridge — WebSocket server for Wingman connection
+    from sharanbot.tandem.openclaw_bridge import OpenClawBridge
+
+    async def _wingman_chat(session_key: str, message: str) -> str:
+        """Route Wingman chat messages through SharanBot agent."""
+        resp = await agent.process_direct(
+            message,
+            session_key=f"wingman:{session_key}",
+            channel="wingman",
+            chat_id="tandem",
+        )
+        return resp.content if resp else "No response from agent."
+
+    openclaw_bridge = OpenClawBridge(on_chat=_wingman_chat)
+    console.print(f"[green]✓[/green] OpenClaw Bridge: ws://127.0.0.1:18789 (Wingman link)")
+    console.print(f"[green]✓[/green] Computer tool: mouse + keyboard + screenshot for all agents")
+
     async def run():
         try:
             await cron.start()
@@ -749,6 +766,8 @@ def gateway(
             await config_watcher.start()
             if dashboard_server:
                 await dashboard_server.start()
+            # Start OpenClaw bridge before tandem so Wingman can connect
+            await openclaw_bridge.start()
             # Start Tandem Browser after dashboard so dashboard URL is available
             await tandem.start()
             await asyncio.gather(
@@ -762,6 +781,7 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            await openclaw_bridge.stop()
             await tandem.stop()
             if dashboard_server:
                 await dashboard_server.stop()
