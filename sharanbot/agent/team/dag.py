@@ -55,13 +55,18 @@ class TaskDAG:
         self._execution_order = None
 
     def get_ready_tasks(self) -> list[TaskNode]:
-        """Return tasks whose dependencies are all completed and that are pending."""
+        """Return tasks whose dependencies are all resolved and that are pending.
+
+        A dependency is resolved if it's completed, failed, or skipped.
+        Failed/skipped dependencies still allow downstream tasks to proceed
+        so the DAG doesn't deadlock — the downstream agent can adapt.
+        """
         ready = []
         for task in self.tasks.values():
             if task.status != "pending":
                 continue
             deps_met = all(
-                self.tasks[dep].status == "completed"
+                self.tasks[dep].status in ("completed", "failed", "skipped")
                 for dep in task.depends_on
                 if dep in self.tasks
             )

@@ -107,6 +107,8 @@ class TeamOrchestrator:
 
         session.tracer.start()
         dag = session.dag
+        deadlock_wait_rounds = 0
+        max_deadlock_rounds = 3  # Skip blocked tasks after 3 idle rounds
 
         while not dag.is_complete():
             ready = dag.get_ready_tasks()
@@ -122,11 +124,29 @@ class TeamOrchestrator:
                 # No tasks ready and not complete → deadlock or all running
                 running = [t for t in dag.tasks.values() if t.status == "running"]
                 if not running:
-                    logger.warning("Team {}: DAG deadlock — no ready or running tasks", team_id)
-                    break
-                # Wait for running tasks to finish
+                    deadlock_wait_rounds += 1
+                    if deadlock_wait_rounds >= max_deadlock_rounds:
+                        # Skip blocked pending tasks to break the deadlock
+                        pending = [t for t in dag.tasks.values() if t.status == "pending"]
+                        if pending:
+                            logger.warning(
+                                "Team {}: DAG deadlock after {} rounds, skipping {} blocked tasks",
+                                team_id, deadlock_wait_rounds, len(pending),
+                            )
+                            for t in pending:
+                                dag.mark_failed(t.id, "Skipped: dependency deadlock")
+                            break
+                        logger.warning("Team {}: DAG deadlock — no ready, running, or pending tasks", team_id)
+                        break
+                    # Wait briefly before checking again
+                    await asyncio.sleep(2)
+                    continue
+                # Tasks are running, wait for them
+                deadlock_wait_rounds = 0
                 await asyncio.sleep(1)
                 continue
+
+            deadlock_wait_rounds = 0  # Reset on progress
 
             # Launch ready tasks concurrently
             coros = [
