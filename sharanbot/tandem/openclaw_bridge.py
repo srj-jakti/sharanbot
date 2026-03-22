@@ -59,11 +59,23 @@ class OpenClawBridge:
         # Also accept WebSocket at root (openclaw-backend.js connects to ws://host:port)
         self._app.router.add_get("/", self._handle_ws_or_root)
 
+        # Accept activity events from Tandem (Wingman Vision)
+        self._app.router.add_post("/api/sessions/main/events", self._handle_activity_event)
+
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
         site = web.TCPSite(self._runner, "127.0.0.1", self.port)
         await site.start()
         logger.info("OpenClaw Bridge started on port {}", self.port)
+
+    async def _handle_activity_event(self, request: web.Request) -> web.Response:
+        """Accept activity events from Tandem's WingmanStream (POST /api/sessions/main/events)."""
+        try:
+            data = await request.json()
+        except Exception:
+            data = None
+        logger.debug(f"Received activity event: {data}")
+        return web.json_response({"ok": True})
 
     async def stop(self) -> None:
         for ws in list(self._ws_clients):
