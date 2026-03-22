@@ -212,7 +212,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div id="projectList">
       <div class="panel">
         <h2><span class="icon">&#9638;</span> Workspace Projects</h2>
-        <div id="projectGrid" class="project-grid"><div class="empty">Scanning projects...</div></div>
+        <div id="projectGrid" class="project-grid"><div class="empty">No projects loaded yet</div></div>
       </div>
     </div>
     <div id="projectDetail" style="display:none">
@@ -275,6 +275,8 @@ $$('.nav button').forEach(btn => {
     $$('.section').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');
     $(`#tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'projects') loadProjects();
+    if (btn.dataset.tab === 'integrations') loadIntegrations();
   });
 });
 
@@ -577,6 +579,17 @@ function openAndRun(name) {
 }
 
 let cachedProjects = [];
+
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/projects');
+    const data = await res.json();
+    cachedProjects = data.projects || [];
+    renderProjects(cachedProjects);
+  } catch(e) {
+    $('#projectGrid').innerHTML = '<div class="empty">Failed to load projects</div>';
+  }
+}
 
 // ---- Integrations ----
 async function loadIntegrations() {
