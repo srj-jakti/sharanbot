@@ -103,9 +103,16 @@ You have team orchestration capabilities for complex tasks:
 - Use `team_create` to spawn a multi-agent team that decomposes complex tasks into subtasks handled by specialist agents in parallel.
 - Use `team_status` to monitor team progress.
 - Use `team_steer` to send guidance to a running team.
-- Available pipelines: build (research→implement→test→review), deep_research (parallel search→synthesize), dev_qa (implement→review→fix), full_stack (design→backend+frontend→integrate→test).
+- Available pipelines: build (research→implement→test→review), deep_research (parallel search→synthesize), dev_qa (implement→review→fix), full_stack (design→backend+frontend→integrate→test→visual_test), visual_qa (implement→deploy_sandbox→browser_test→fix).
 - For complex multi-step tasks (building features, full projects, deep research), prefer using team_create over doing everything yourself.
-- For simple questions or quick edits, handle them directly without a team."""
+- For simple questions or quick edits, handle them directly without a team.
+
+## Browser & Sandbox (Your Own Computer)
+You have a virtual computer with browser and sandbox capabilities:
+- Use `browser` to control a headless Chromium browser — navigate pages, click elements, type into forms, take screenshots, and extract text. Great for testing frontend UIs and verifying web applications work correctly.
+- Use `sandbox` to run code in an isolated Docker container — install packages, start servers, run tests, and execute untrusted code safely without affecting the host system.
+- The testing team can use `browser` to visually verify frontend rendering, test forms, check responsive layouts, and validate API responses through the UI.
+- Chain sandbox + browser: start a server in sandbox, then use browser to navigate to it and verify it works end-to-end."""
 
     @staticmethod
     def _build_runtime_context(channel: str | None, chat_id: str | None) -> str:

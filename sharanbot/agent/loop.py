@@ -36,6 +36,8 @@ from sharanbot.agent.team.orchestrator import TeamOrchestrator
 from sharanbot.agent.team.tools import TeamCreateTool, TeamStatusTool, TeamSteerTool
 from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.agent.tools.import_agent import ImportAgentTool
+from sharanbot.agent.tools.browser import BrowserTool
+from sharanbot.agent.tools.sandbox import SandboxTool
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -206,6 +208,14 @@ class AgentLoop:
             plugins_dir=self.workspace / "plugins" / "agents",
             agent_loop=self,
         ))
+
+        # Browser tool (Playwright-based visual web interaction)
+        self.tools.register(BrowserTool(
+            screenshots_dir=self.workspace / "screenshots",
+        ))
+
+        # Sandbox tool (Docker-based isolated execution)
+        self.tools.register(SandboxTool(workspace=self.workspace))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

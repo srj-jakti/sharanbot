@@ -17,6 +17,7 @@ class PipelineRegistry:
         self._templates["deep_research"] = self._deep_research_pipeline
         self._templates["dev_qa"] = self._dev_qa_pipeline
         self._templates["full_stack"] = self._full_stack_pipeline
+        self._templates["visual_qa"] = self._visual_qa_pipeline
 
     def get(self, name: str, task: str = "") -> TaskDAG | None:
         """Get a pipeline template by name, parameterized with the task."""
@@ -154,5 +155,59 @@ class PipelineRegistry:
             description=f"End-to-end testing: {task}",
             agent_profile="coder",
             depends_on=["integrate"],
+        ))
+        dag.add_task(TaskNode(
+            id="visual_test",
+            description=(
+                f"Visual E2E testing using the browser tool: Start the application, "
+                f"navigate to it with the browser, take screenshots, click through "
+                f"the main user flows, verify the UI renders correctly and the "
+                f"frontend-backend integration works. Task: {task}"
+            ),
+            agent_profile="e2e_tester",
+            depends_on=["test"],
+            quality_gate=True,
+        ))
+        return dag
+
+    @staticmethod
+    def _visual_qa_pipeline(task: str) -> TaskDAG:
+        """Implement → Deploy to sandbox → Browser-based visual QA → Fix loop."""
+        dag = TaskDAG()
+        dag.add_task(TaskNode(
+            id="implement",
+            description=f"Implement: {task}",
+            agent_profile="coder",
+            quality_gate=True,
+            max_retries=2,
+        ))
+        dag.add_task(TaskNode(
+            id="deploy_sandbox",
+            description=(
+                f"Deploy the implementation to a Docker sandbox: "
+                f"Create a sandbox, copy the code in, install dependencies, "
+                f"and start the server. Return the URL. Task: {task}"
+            ),
+            agent_profile="devops",
+            depends_on=["implement"],
+        ))
+        dag.add_task(TaskNode(
+            id="visual_test",
+            description=(
+                f"Use the browser tool to navigate to the running application, "
+                f"take screenshots, test all user flows (forms, buttons, navigation), "
+                f"verify the UI renders correctly and data flows between frontend and "
+                f"backend. Report any visual or functional issues. Task: {task}"
+            ),
+            agent_profile="e2e_tester",
+            depends_on=["deploy_sandbox"],
+            quality_gate=True,
+            max_retries=2,
+        ))
+        dag.add_task(TaskNode(
+            id="fix_issues",
+            description=f"Fix any issues found during visual QA testing: {task}",
+            agent_profile="coder",
+            depends_on=["visual_test"],
         ))
         return dag

@@ -327,7 +327,7 @@ class TestPipelineRegistry:
         reg = PipelineRegistry()
         dag = reg.get("full_stack", "app")
         assert dag is not None
-        assert len(dag.tasks) == 5
+        assert len(dag.tasks) == 6  # design, backend, frontend, integrate, test, visual_test
         # design has no deps
         ready = dag.get_ready_tasks()
         assert len(ready) == 1
