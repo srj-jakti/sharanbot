@@ -607,10 +607,54 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
+        # Autopilot: analyze task complexity and inject routing hint
+        autopilot_hint = ""
+        if self.autopilot.enabled:
+            try:
+                decision = await self.autopilot.analyze(msg.content)
+                logger.info(
+                    "Autopilot decision: strategy={}, complexity={}, profile={}, pipeline={}, reason={}",
+                    decision.strategy, decision.complexity,
+                    decision.suggested_profile, decision.suggested_pipeline,
+                    decision.reasoning,
+                )
+                if decision.needs_team:
+                    autopilot_hint = (
+                        f"\n\n[Autopilot Advisory] This task is complex ({decision.complexity}). "
+                        f"Recommended: Use team_create with pipeline='{decision.suggested_pipeline}' "
+                        f"to handle this efficiently with a multi-agent team. Reason: {decision.reasoning}"
+                    )
+                elif decision.needs_subagent:
+                    autopilot_hint = (
+                        f"\n\n[Autopilot Advisory] This task is moderate ({decision.complexity}). "
+                        f"Consider using spawn with profile='{decision.suggested_profile}' "
+                        f"for focused execution. Reason: {decision.reasoning}"
+                    )
+            except Exception as e:
+                logger.warning("Autopilot analysis failed, proceeding without hint: {}", e)
+
+        # Inject memory context hint when conversation is long
+        memory_hint = ""
+        try:
+            estimated, _ = self.memory_consolidator.estimate_session_prompt_tokens(session)
+            if estimated > self.context_window_tokens // 2:
+                mem_content = self.context.memory.read_long_term()
+                if mem_content:
+                    memory_hint = (
+                        f"\n\n[Context Reminder] Your conversation is getting long "
+                        f"({estimated}/{self.context_window_tokens} tokens). "
+                        f"Key context from memory:\n{mem_content[:2000]}"
+                    )
+        except Exception:
+            pass
+
+        # Build enriched user message with autopilot + memory hints
+        enriched_content = msg.content + autopilot_hint + memory_hint
+
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,
-            current_message=msg.content,
+            current_message=enriched_content,
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
         )

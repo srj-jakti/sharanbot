@@ -300,22 +300,28 @@ class MemoryConsolidator:
         return True
 
     async def maybe_consolidate_by_tokens(self, session: Session) -> None:
-        """Loop: archive old messages until prompt fits within half the context window."""
+        """Loop: archive old messages when prompt exceeds 75% of context window.
+
+        Triggers at 75% to leave headroom for the current turn, and
+        consolidates down to 50% so the agent never runs out of context.
+        """
         if not session.messages or self.context_window_tokens <= 0:
             return
 
         lock = self.get_lock(session.key)
         async with lock:
-            target = self.context_window_tokens // 2
+            trigger = self.context_window_tokens * 3 // 4  # 75% trigger
+            target = self.context_window_tokens // 2       # consolidate down to 50%
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
-            if estimated < self.context_window_tokens:
+            if estimated < trigger:
                 logger.debug(
-                    "Token consolidation idle {}: {}/{} via {}",
+                    "Token consolidation idle {}: {}/{} (trigger {}) via {}",
                     session.key,
                     estimated,
                     self.context_window_tokens,
+                    trigger,
                     source,
                 )
                 return
