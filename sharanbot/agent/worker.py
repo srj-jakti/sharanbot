@@ -226,7 +226,7 @@ class WorkerManager:
                 "sharanbot-llm": {
                     "baseUrl": self.api_base,
                     "apiKey": "SHARANBOT_WORKER_API_KEY",
-                    "api": "openai-responses",
+                    "api": "openai-completions",
                     "models": [
                         {
                             "id": self.model or "default",
