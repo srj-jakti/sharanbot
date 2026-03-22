@@ -40,14 +40,14 @@ async def test_tavily_search(monkeypatch):
         assert "tavily" in url
         assert kw["headers"]["Authorization"] == "Bearer tavily-key"
         return _response(json={
-            "results": [{"title": "OpenClaw", "url": "https://openclaw.io", "content": "Framework"}]
+            "results": [{"title": "SharanBot", "url": "https://sharanbot.io", "content": "Framework"}]
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
     tool = _tool(provider="tavily", api_key="tavily-key")
-    result = await tool.execute(query="openclaw")
-    assert "OpenClaw" in result
-    assert "https://openclaw.io" in result
+    result = await tool.execute(query="sharanbot")
+    assert "SharanBot" in result
+    assert "https://sharanbot.io" in result
 
 
 @pytest.mark.asyncio

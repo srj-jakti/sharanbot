@@ -72,9 +72,9 @@ Skills with available="false" need dependencies installed first - you can try in
 - Use file tools when they are simpler or more reliable than shell commands.
 """
 
-        return f"""# sharanbot 🐈
+        return f"""# SharanBot 🤖
 
-You are sharanbot, a helpful AI assistant.
+You are SharanBot, a helpful AI assistant.
 
 ## Runtime
 {runtime}

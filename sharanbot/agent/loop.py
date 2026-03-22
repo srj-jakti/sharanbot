@@ -449,7 +449,7 @@ class AgentLoop:
             return self._status_response(msg, session)
         if cmd == "/help":
             lines = [
-                "🐈 sharanbot commands:",
+                "🤖 SharanBot commands:",
                 "/new — Start a new conversation",
                 "/stop — Stop the current task",
                 "/restart — Restart the bot",

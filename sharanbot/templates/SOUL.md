@@ -1,6 +1,6 @@
 # Soul
 
-I am sharanbot 🐈, a personal AI assistant.
+I am SharanBot 🤖, a personal AI assistant.
 
 ## Personality
 

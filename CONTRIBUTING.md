@@ -14,8 +14,7 @@ software together: with care, clarity, and respect for the next person reading t
 
 | Maintainer | Focus |
 |------------|-------|
-| [@re-bin](https://github.com/re-bin) | Project lead, `main` branch |
-| [@chengyongru](https://github.com/chengyongru) | `nightly` branch, experimental features |
+| [@airajakathi](https://github.com/airajakathi) | Project lead, `main` branch |
 
 ## Branching Strategy
 
@@ -117,6 +116,6 @@ Please feel free to open an [issue](https://github.com/airajakathi/Sharanbot/iss
 
 - [Discord](https://discord.gg/MnCvHqpUGB)
 - [Feishu/WeChat](./COMMUNICATION.md)
-- Email: Xubin Ren (@Re-bin) — <xubinrencs@gmail.com>
+- Email: [GitHub Issues](https://github.com/airajakathi/Sharanbot/issues)
 
-Thank you for spending your time and care on sharanbot. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.
+Thank you for spending your time and care on SharanBot. We would love for more people to participate in this community, and we genuinely welcome contributions of all sizes.

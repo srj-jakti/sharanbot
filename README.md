@@ -12,9 +12,9 @@
   </p>
 </div>
 
-🐈 **sharanbot** is an **ultra-lightweight** personal AI assistant inspired by [OpenClaw](https://github.com/openclaw/openclaw).
+🤖 **SharanBot** is an **ultra-lightweight** personal AI assistant.
 
-⚡️ Delivers core agent functionality with **99% fewer lines of code** than OpenClaw.
+⚡️ Delivers core agent functionality in a clean, minimal codebase.
 
 📏 Real-time line count: run `bash core_agent_lines.sh` to verify anytime.
 
@@ -66,15 +66,15 @@
 - **2026-02-05** ✨ Added Feishu channel, DeepSeek provider, and enhanced scheduled tasks support!
 - **2026-02-04** 🚀 Released **v0.1.3.post4** with multi-provider & Docker support! Check [here](https://github.com/airajakathi/Sharanbot/releases/tag/v0.1.3.post4) for details.
 - **2026-02-03** ⚡ Integrated vLLM for local LLM support and improved natural language task scheduling!
-- **2026-02-02** 🎉 sharanbot officially launched! Welcome to try 🐈 sharanbot!
+- **2026-02-02** 🎉 sharanbot officially launched! Welcome to try 🤖 sharanbot!
 
 </details>
 
-> 🐈 sharanbot is for educational, research, and technical exchange purposes only. It is unrelated to crypto and does not involve any official token or coin.
+> 🤖 SharanBot is for educational, research, and technical exchange purposes only. It is unrelated to crypto and does not involve any official token or coin.
 
-## Key Features of sharanbot:
+## Key Features of SharanBot:
 
-🪶 **Ultra-Lightweight**: A super lightweight implementation of OpenClaw — 99% smaller, significantly faster.
+🪶 **Ultra-Lightweight**: A super lightweight AI assistant framework — minimal, fast, and powerful.
 
 🔬 **Research-Ready**: Clean, readable code that's easy to understand, modify, and extend for research.
 
@@ -722,7 +722,7 @@ sharanbot gateway
 <details>
 <summary><b>Wecom (企业微信)</b></summary>
 
-> Here we use [wecom-aibot-sdk-python](https://github.com/chengyongru/wecom_aibot_sdk) (community Python version of the official [@wecom/aibot-node-sdk](https://www.npmjs.com/package/@wecom/aibot-node-sdk)).
+> Uses the `wecom-aibot-sdk-python` package (community Python version of the official [@wecom/aibot-node-sdk](https://www.npmjs.com/package/@wecom/aibot-node-sdk)).
 >
 > Uses **WebSocket** long connection — no public IP required.
 
@@ -761,7 +761,7 @@ sharanbot gateway
 
 ## 🌐 Agent Social Network
 
-🐈 sharanbot is capable of linking to the agent social network (agent community). **Just send one message and your sharanbot joins automatically!**
+🤖 SharanBot is capable of linking to the agent social network (agent community). **Just send one message and your SharanBot joins automatically!**
 
 | Platform | How to Join (send this message to your bot) |
 |----------|-------------|
