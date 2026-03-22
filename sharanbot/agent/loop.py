@@ -37,6 +37,7 @@ from sharanbot.agent.team.tools import TeamCreateTool, TeamStatusTool, TeamSteer
 from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.agent.tools.browser import BrowserTool
+from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
 from sharanbot.agent.tools.sandbox import SandboxTool
 from sharanbot.agent.learning import LearningStore
 from sharanbot.agent.recovery import RecoveryEngine
@@ -233,8 +234,9 @@ class AgentLoop:
             agent_loop=self,
         ))
 
-        # Browser tool (Playwright-based visual web interaction)
-        self.tools.register(BrowserTool(
+        # Browser tool — prefer Tandem Browser (Electron) when available,
+        # fall back to headless Playwright otherwise.
+        self.tools.register(TandemBrowserTool(
             screenshots_dir=self.workspace / "screenshots",
         ))
 

@@ -137,9 +137,9 @@ class SubagentManager:
             tools.register(WebFetchTool(proxy=self.web_proxy))
 
             # Browser and sandbox tools for team members (testing, visual verification)
-            from sharanbot.agent.tools.browser import BrowserTool
+            from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
             from sharanbot.agent.tools.sandbox import SandboxTool
-            tools.register(BrowserTool(screenshots_dir=self.workspace / "screenshots"))
+            tools.register(TandemBrowserTool(screenshots_dir=self.workspace / "screenshots"))
             tools.register(SandboxTool(workspace=self.workspace))
 
             # Allow nested spawning if depth allows

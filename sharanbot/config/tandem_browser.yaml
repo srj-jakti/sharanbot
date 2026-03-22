@@ -1,0 +1,43 @@
+# Tandem Browser Configuration for SharanBot
+
+enabled: true
+priority: high  # Use as default browser instead of headless
+
+# Connection settings
+connection:
+  base_url: "http://127.0.0.1:8765"
+  timeout: 30
+  
+# Authentication
+auth:
+  # Token is automatically loaded from ~/.tandem/api-token
+  # Set environment variable TANDEM_API_TOKEN as fallback
+  env_fallback: true
+
+# Default behavior
+defaults:
+  viewport:
+    width: 1280
+    height: 720
+  screenshot:
+    full_page: false
+    quality: 90
+  navigation:
+    wait_for_load: true
+    settle_time: 800
+
+# Features
+features:
+  auto_screenshot: true      # Take screenshot after navigation
+  save_screenshots: false    # Save screenshots to disk
+  screenshots_path: "./screenshots"
+  extract_markdown: true     # Always extract content as markdown
+  max_content_length: 50000  # Truncate if longer
+
+# Security
+security:
+  allowed_protocols:
+    - https
+    - http
+  blocked_domains: []  # Add domains to block
+  confirm_dangerous: true  # Confirm before visiting suspicious sites

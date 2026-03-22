@@ -721,6 +721,7 @@ def gateway(
 
     # Dashboard server (real-time UI)
     dashboard_server = None
+    dashboard_url = None
     if config.dashboard.enable:
         from sharanbot.dashboard.server import DashboardServer
         dashboard_server = DashboardServer(
@@ -728,7 +729,16 @@ def gateway(
             port=config.dashboard.port,
             agent_loop=agent,
         )
-        console.print(f"[green]✓[/green] Dashboard: http://{config.dashboard.host}:{config.dashboard.port}")
+        dashboard_url = f"http://{config.dashboard.host}:{config.dashboard.port}"
+        console.print(f"[green]✓[/green] Dashboard: {dashboard_url}")
+
+    # Tandem Browser (native Electron browser for visual web interaction)
+    from sharanbot.tandem.manager import TandemManager
+    tandem = TandemManager(dashboard_url=dashboard_url)
+    if tandem.tandem_dir:
+        console.print(f"[green]✓[/green] Tandem Browser: {tandem.tandem_dir}")
+    else:
+        console.print("[yellow]Warning: tandem-browser directory not found — browser tool will not work[/yellow]")
 
     async def run():
         try:
@@ -737,6 +747,8 @@ def gateway(
             await config_watcher.start()
             if dashboard_server:
                 await dashboard_server.start()
+            # Start Tandem Browser after dashboard so dashboard URL is available
+            await tandem.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -748,6 +760,7 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            await tandem.stop()
             if dashboard_server:
                 await dashboard_server.stop()
             config_watcher.stop()
