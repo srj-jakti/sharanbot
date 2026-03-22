@@ -17,13 +17,7 @@ from typing import Any
 
 from loguru import logger
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-_GSD_DIR = Path(__file__).resolve().parent.parent.parent / "sharanbot_worker" / "gsd"
-_GSD_LOADER = _GSD_DIR / "dist" / "loader.js"
+from sharanbot.agent.worker_registry import WorkerTypeRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +65,7 @@ class WorkerManager:
         model: str | None = None,
         extra_headers: dict[str, str] | None = None,
         mcp_servers: dict | None = None,
+        worker_type_registry: WorkerTypeRegistry | None = None,
     ):
         self.workspace = workspace
         self.api_key = api_key
@@ -79,6 +74,9 @@ class WorkerManager:
         self.extra_headers = extra_headers or {}
         self.mcp_servers = mcp_servers or {}
         self._workers: dict[str, WorkerState] = {}
+        self.type_registry = worker_type_registry or WorkerTypeRegistry(
+            plugins_dir=workspace / "plugins" / "workers"
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -91,43 +89,51 @@ class WorkerManager:
         project_dir: str | None = None,
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
+        worker_type: str = "gsd",
     ) -> str:
-        """Spawn a new GSD worker process.
+        """Spawn a worker process of the given type.
 
         Returns a human-readable status string.
         """
+        # Look up worker type from registry
+        wtype = self.type_registry.get(worker_type)
+        if not wtype:
+            available = ", ".join(t.name for t in self.type_registry.list_types())
+            return f"Error: Unknown worker type '{worker_type}'. Available: {available}"
+
         worker_id = str(uuid.uuid4())[:8]
         display_label = label or task[:40] + ("…" if len(task) > 40 else "")
         proj = Path(project_dir) if project_dir else self.workspace
         origin = {"channel": origin_channel, "chat_id": origin_chat_id}
 
-        # Prepare GSD home directory for this worker
-        gsd_home = self.workspace / ".sharanbot_workers" / worker_id
-        gsd_home.mkdir(parents=True, exist_ok=True)
+        # Prepare home directory for this worker
+        worker_home = self.workspace / ".sharanbot_workers" / worker_id
+        worker_home.mkdir(parents=True, exist_ok=True)
 
-        # Write models.json so GSD can use SharanBot's LLM
-        self._write_models_json(gsd_home)
+        # Write models.json so worker can use SharanBot's LLM
+        self._write_models_json(worker_home)
 
         # Write .mcp.json for MCP server sharing
-        self._write_mcp_json(gsd_home)
+        self._write_mcp_json(worker_home)
 
         # Build environment
-        env = self._build_env(gsd_home)
+        env = self._build_env(worker_home)
 
-        # Spawn GSD in RPC mode
-        node_exe = shutil.which("node")
-        if not node_exe:
-            return "Error: Node.js not found.  Cannot start worker."
+        # Determine runtime executable
+        loader_path = Path(wtype.loader_path)
+        if not loader_path.exists():
+            return f"Error: Worker loader not found at {loader_path}"
 
-        if not _GSD_LOADER.exists():
-            return f"Error: GSD loader not found at {_GSD_LOADER}"
+        runtime = wtype.runtime or "node"
+        runtime_exe = shutil.which(runtime)
+        if not runtime_exe:
+            return f"Error: {runtime} not found. Cannot start {wtype.display_name} worker."
 
-        cmd = [node_exe, str(_GSD_LOADER), "--mode", "rpc"]
+        cmd = [runtime_exe, str(loader_path)] + list(wtype.mode_args)
         if self.model:
-            # Use the custom provider model
             cmd.extend(["--model", f"sharanbot-llm/{self.model}"])
 
-        logger.info("Spawning worker [{}]: {} in {}", worker_id, display_label, proj)
+        logger.info("Spawning {} worker [{}]: {} in {}", wtype.display_name, worker_id, display_label, proj)
 
         process = await asyncio.create_subprocess_exec(
             *cmd,

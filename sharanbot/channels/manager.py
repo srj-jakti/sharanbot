@@ -159,3 +159,59 @@ class ChannelManager:
     def enabled_channels(self) -> list[str]:
         """Get list of enabled channel names."""
         return list(self.channels.keys())
+
+    # ------------------------------------------------------------------
+    # Dynamic channel management
+    # ------------------------------------------------------------------
+
+    async def add_channel(self, name: str, section: Any) -> str:
+        """Add and start a new channel at runtime."""
+        if name in self.channels:
+            return f"Channel '{name}' already active."
+        from sharanbot.channels.registry import discover_all
+        all_cls = discover_all()
+        cls = all_cls.get(name)
+        if not cls:
+            return f"No channel implementation found for '{name}'."
+        try:
+            channel = cls(section, self.bus)
+            groq_key = self.config.providers.groq.api_key
+            channel.transcription_api_key = groq_key
+            self.channels[name] = channel
+            await channel.start()
+            logger.info("Dynamically added channel: {}", name)
+            return f"Channel '{name}' added and started."
+        except Exception as e:
+            logger.error("Failed to add channel {}: {}", name, e)
+            return f"Error adding channel '{name}': {e}"
+
+    async def remove_channel(self, name: str) -> str:
+        """Stop and remove a channel at runtime."""
+        channel = self.channels.pop(name, None)
+        if not channel:
+            return f"Channel '{name}' not found."
+        try:
+            await channel.stop()
+        except Exception as e:
+            logger.warning("Error stopping channel {}: {}", name, e)
+        logger.info("Removed channel: {}", name)
+        return f"Channel '{name}' removed."
+
+    async def reload_channel(self, name: str) -> str:
+        """Restart a channel (stop + start)."""
+        channel = self.channels.get(name)
+        if not channel:
+            return f"Channel '{name}' not found."
+        try:
+            await channel.stop()
+            await channel.start()
+            logger.info("Reloaded channel: {}", name)
+            return f"Channel '{name}' reloaded."
+        except Exception as e:
+            logger.error("Error reloading channel {}: {}", name, e)
+            return f"Error reloading channel '{name}': {e}"
+
+    async def reload_all(self) -> None:
+        """Reload all active channels."""
+        for name in list(self.channels.keys()):
+            await self.reload_channel(name)

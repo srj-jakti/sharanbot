@@ -27,6 +27,11 @@ from sharanbot.agent.tools.shell import ExecTool
 from sharanbot.agent.tools.spawn import SpawnTool
 from sharanbot.agent.tools.web import WebFetchTool, WebSearchTool
 from sharanbot.agent.tools.worker import WorkerStartTool, WorkerStatusTool, WorkerSteerTool, WorkerStopTool
+from sharanbot.agent.tools.reload import ReloadTool
+from sharanbot.agent.tools.evolve import EvolveTool
+from sharanbot.agent.tools.dynamic import DynamicToolLoader
+from sharanbot.agent.profiles import AgentProfileRegistry
+from sharanbot.agent.worker_registry import WorkerTypeRegistry
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -35,6 +40,7 @@ from sharanbot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
     from sharanbot.agent.worker import WorkerManager
+    from sharanbot.channels.manager import ChannelManager
     from sharanbot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
     from sharanbot.cron.service import CronService
 
@@ -70,6 +76,9 @@ class AgentLoop:
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
         worker_manager: WorkerManager | None = None,
+        worker_type_registry: WorkerTypeRegistry | None = None,
+        agent_profile_registry: AgentProfileRegistry | None = None,
+        channel_manager: "ChannelManager | None" = None,
     ):
         from sharanbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -86,6 +95,13 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
         self.worker_manager = worker_manager
+        self.worker_type_registry = worker_type_registry or WorkerTypeRegistry(
+            plugins_dir=workspace / "plugins" / "workers"
+        )
+        self.agent_profile_registry = agent_profile_registry or AgentProfileRegistry(
+            plugins_dir=workspace / "plugins" / "agents"
+        )
+        self.channel_manager: ChannelManager | None = channel_manager
         self._start_time = time.time()
         self._last_usage: dict[str, int] = {}
 
@@ -101,6 +117,7 @@ class AgentLoop:
             web_proxy=web_proxy,
             exec_config=self.exec_config,
             restrict_to_workspace=restrict_to_workspace,
+            profile_registry=self.agent_profile_registry,
         )
 
         self._running = False
@@ -121,6 +138,17 @@ class AgentLoop:
             get_tool_definitions=self.tools.get_definitions,
         )
         self._register_default_tools()
+
+        # Dynamic tools from workspace/plugins/tools/
+        self._dynamic_loader = DynamicToolLoader(
+            tools_dir=workspace / "plugins" / "tools",
+            registry=self.tools,
+        )
+        self._dynamic_loader.scan_and_load()
+
+        # Scan plugin directories
+        self.worker_type_registry.scan_plugins()
+        self.agent_profile_registry.scan_plugins()
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -148,6 +176,10 @@ class AgentLoop:
             self.tools.register(WorkerSteerTool(manager=self.worker_manager))
             self.tools.register(WorkerStopTool(manager=self.worker_manager))
 
+        # Meta-tools: reload & evolve (always available)
+        self.tools.register(ReloadTool(agent_loop=self))
+        self.tools.register(EvolveTool(agent_loop=self))
+
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
@@ -169,6 +201,66 @@ class AgentLoop:
                 self._mcp_stack = None
         finally:
             self._mcp_connecting = False
+
+    async def handle_reload(self, component: str, target: str | None = None) -> str:
+        """Dispatch a reload request for the given component."""
+        if component == "tools":
+            count = self._dynamic_loader.reload_all()
+            return f"Reloaded dynamic tools ({count} loaded)."
+        elif component == "mcp":
+            await self._reconnect_mcp()
+            return "MCP servers reconnected."
+        elif component == "config":
+            from sharanbot.config.loader import reload_config
+            new_cfg = reload_config(self._config_path) if hasattr(self, "_config_path") else None
+            if new_cfg:
+                self.apply_config_reload(new_cfg)
+                return "Configuration reloaded and applied."
+            return "No config path set; reload skipped."
+        elif component == "workers":
+            self.worker_type_registry.reload_plugins()
+            return f"Worker types reloaded ({len(self.worker_type_registry.list_types())} available)."
+        elif component == "agents":
+            self.agent_profile_registry.reload_plugins()
+            return f"Agent profiles reloaded ({len(self.agent_profile_registry.list_profiles())} available)."
+        elif component == "channels":
+            if self.channel_manager and hasattr(self.channel_manager, "reload_all"):
+                await self.channel_manager.reload_all()
+                return "Channels reloaded."
+            return "Channel manager not available."
+        else:
+            return f"Unknown component: {component}"
+
+    async def _reconnect_mcp(self) -> None:
+        """Tear down and reconnect all MCP servers."""
+        # Close existing connections
+        if self._mcp_stack:
+            try:
+                await self._mcp_stack.aclose()
+            except Exception:
+                pass
+            self._mcp_stack = None
+        # Unregister MCP tools
+        for name in list(self.tools._tools.keys()):
+            if name.startswith("mcp_"):
+                self.tools.unregister(name)
+        # Reset state and reconnect
+        self._mcp_connected = False
+        self._mcp_connecting = False
+        await self._connect_mcp()
+
+    def apply_config_reload(self, new_config) -> None:
+        """Apply a new Config object to the running agent."""
+        defaults = new_config.agent_defaults
+        if defaults.model:
+            self.model = defaults.model
+        if defaults.max_iterations:
+            self.max_iterations = defaults.max_iterations
+        if defaults.context_window:
+            self.context_window_tokens = defaults.context_window
+        # Update MCP servers list for next reconnect
+        if new_config.mcp_servers:
+            self._mcp_servers = new_config.mcp_servers
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""

@@ -36,3 +36,13 @@ class OutboundMessage:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ReloadEvent:
+    """Request to hot-reload a SharanBot component."""
+
+    component: str  # "tools", "workers", "agents", "mcp", "config", "skills", "channels"
+    action: str = "reload_all"  # "add", "remove", "reload_all"
+    target: str | None = None  # specific item name, or None for all
+    payload: dict[str, Any] = field(default_factory=dict)
+
+

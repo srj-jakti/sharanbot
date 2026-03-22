@@ -8,6 +8,7 @@ from typing import Any
 
 from loguru import logger
 
+from sharanbot.agent.profiles import AgentProfileRegistry
 from sharanbot.agent.skills import BUILTIN_SKILLS_DIR
 from sharanbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from sharanbot.agent.tools.registry import ToolRegistry
@@ -33,6 +34,7 @@ class SubagentManager:
         web_proxy: str | None = None,
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
+        profile_registry: AgentProfileRegistry | None = None,
     ):
         from sharanbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -44,6 +46,9 @@ class SubagentManager:
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
         self.restrict_to_workspace = restrict_to_workspace
+        self.profile_registry = profile_registry or AgentProfileRegistry(
+            plugins_dir=workspace / "plugins" / "agents"
+        )
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
 
@@ -54,6 +59,7 @@ class SubagentManager:
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
         session_key: str | None = None,
+        profile: str | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
         task_id = str(uuid.uuid4())[:8]
@@ -61,7 +67,7 @@ class SubagentManager:
         origin = {"channel": origin_channel, "chat_id": origin_chat_id}
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin)
+            self._run_subagent(task_id, task, display_label, origin, profile=profile)
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -85,9 +91,19 @@ class SubagentManager:
         task: str,
         label: str,
         origin: dict[str, str],
+        profile: str | None = None,
     ) -> None:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
+
+        # Look up profile if specified
+        agent_profile = None
+        if profile:
+            agent_profile = self.profile_registry.get(profile)
+
+        # Determine model and max_iterations from profile or defaults
+        subagent_model = (agent_profile.model if agent_profile and agent_profile.model else self.model)
+        subagent_max_iter = (agent_profile.max_iterations if agent_profile and agent_profile.max_iterations else 15)
 
         try:
             # Build subagent tools (no message tool, no spawn tool)
@@ -106,15 +122,24 @@ class SubagentManager:
             ))
             tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
             tools.register(WebFetchTool(proxy=self.web_proxy))
-            
-            system_prompt = self._build_subagent_prompt()
+
+            # Apply profile tool filtering
+            if agent_profile and agent_profile.denied_tools:
+                for name in agent_profile.denied_tools:
+                    tools.unregister(name)
+
+            system_prompt = (
+                agent_profile.system_prompt
+                if agent_profile and agent_profile.system_prompt
+                else self._build_subagent_prompt()
+            )
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task},
             ]
 
             # Run agent loop (limited iterations)
-            max_iterations = 15
+            max_iterations = subagent_max_iter
             iteration = 0
             final_result: str | None = None
 
@@ -124,7 +149,7 @@ class SubagentManager:
                 response = await self.provider.chat_with_retry(
                     messages=messages,
                     tools=tools.get_definitions(),
-                    model=self.model,
+                    model=subagent_model,
                 )
 
                 if response.has_tool_calls:

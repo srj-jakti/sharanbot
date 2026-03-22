@@ -75,3 +75,16 @@ def _migrate_config(data: dict) -> dict:
     if "restrictToWorkspace" in exec_cfg and "restrictToWorkspace" not in tools:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
     return data
+
+
+def reload_config(config_path: Path | None = None) -> Config:
+    """Re-read and validate config from disk.
+
+    Unlike ``load_config`` this always reads from the file on disk (never
+    falls back silently to defaults on error — it raises instead).
+    """
+    path = config_path or get_config_path()
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    data = _migrate_config(data)
+    return Config.model_validate(data)

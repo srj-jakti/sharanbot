@@ -543,6 +543,16 @@ def gateway(
     cron_store_path = get_cron_dir() / "jobs.json"
     cron = CronService(cron_store_path)
 
+    # Create plugin registries
+    from sharanbot.agent.worker_registry import WorkerTypeRegistry
+    from sharanbot.agent.profiles import AgentProfileRegistry
+
+    plugins_dir = config.workspace_path / "plugins"
+    worker_type_registry = WorkerTypeRegistry(plugins_dir=plugins_dir / "workers")
+    worker_type_registry.scan_plugins()
+    agent_profile_registry = AgentProfileRegistry(plugins_dir=plugins_dir / "agents")
+    agent_profile_registry.scan_plugins()
+
     # Create worker manager if enabled
     worker_mgr = None
     if config.worker.enable:
@@ -555,7 +565,11 @@ def gateway(
             model=config.agents.defaults.model,
             extra_headers=dict(provider_cfg.extra_headers) if provider_cfg and provider_cfg.extra_headers else None,
             mcp_servers=config.tools.mcp_servers,
+            worker_type_registry=worker_type_registry,
         )
+
+    # Create channel manager
+    channels = ChannelManager(config, bus)
 
     # Create agent with cron service
     agent = AgentLoop(
@@ -574,6 +588,9 @@ def gateway(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         worker_manager=worker_mgr,
+        worker_type_registry=worker_type_registry,
+        agent_profile_registry=agent_profile_registry,
+        channel_manager=channels,
     )
 
     # Set cron callback (needs agent)
@@ -690,10 +707,23 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
+    # Create config watcher for hot-reload
+    from sharanbot.config.watcher import ConfigWatcher
+    from sharanbot.config.paths import get_config_path
+    config_watcher = ConfigWatcher(
+        config_path=get_config_path(),
+        on_change=lambda new_cfg: agent.apply_config_reload(new_cfg),
+    )
+
+    console.print(f"[green]✓[/green] Self-evolution: reload, evolve, dynamic tools enabled")
+    console.print(f"[green]✓[/green] Worker types: {len(worker_type_registry.list_types())} available")
+    console.print(f"[green]✓[/green] Agent profiles: {len(agent_profile_registry.list_profiles())} available")
+
     async def run():
         try:
             await cron.start()
             await heartbeat.start()
+            config_watcher.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -705,6 +735,7 @@ def gateway(
             console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
             console.print(traceback.format_exc())
         finally:
+            config_watcher.stop()
             await agent.close_mcp()
             if worker_mgr:
                 await worker_mgr.stop_all()

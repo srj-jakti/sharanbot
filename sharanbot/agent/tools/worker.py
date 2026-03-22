@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class WorkerStartTool(Tool):
-    """Start a GSD worker to build software autonomously."""
+    """Start a worker to build software autonomously."""
 
     def __init__(self, manager: "WorkerManager"):
         self._manager = manager
@@ -27,11 +27,12 @@ class WorkerStartTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Start a GSD worker to autonomously build, code, or engineer a software project. "
+            "Start a worker to autonomously build, code, or engineer a software project. "
             "Workers run in the background with full access to files, shell, search, and MCP tools. "
             "Use this for complex engineering tasks: building apps, refactoring codebases, "
             "implementing features, fixing bugs across many files, etc. "
-            "Each worker gets its own process and can run for extended periods."
+            "Each worker gets its own process and can run for extended periods. "
+            "Use worker_type to select the engine (default: gsd)."
         )
 
     @property
@@ -51,17 +52,22 @@ class WorkerStartTool(Tool):
                     "type": "string",
                     "description": "Directory to work in (defaults to workspace)",
                 },
+                "worker_type": {
+                    "type": "string",
+                    "description": "Worker engine type (default: gsd). Use 'reload' tool to see available types.",
+                },
             },
             "required": ["task"],
         }
 
-    async def execute(self, task: str, label: str | None = None, project_dir: str | None = None, **kwargs: Any) -> str:
+    async def execute(self, task: str, label: str | None = None, project_dir: str | None = None, worker_type: str = "gsd", **kwargs: Any) -> str:
         return await self._manager.spawn(
             task=task,
             label=label,
             project_dir=project_dir,
             origin_channel=self._origin_channel,
             origin_chat_id=self._origin_chat_id,
+            worker_type=worker_type,
         )
 
 
