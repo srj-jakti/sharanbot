@@ -5,16 +5,17 @@
   <p>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-    <img src="https://img.shields.io/badge/agents-26-red" alt="Agents">
-    <img src="https://img.shields.io/badge/channels-11-orange" alt="Channels">
-    <img src="https://img.shields.io/badge/tests-647%20passing-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/version-0.1.4-orange" alt="Version">
+    <img src="https://img.shields.io/badge/agents-32-red" alt="Agents">
+    <img src="https://img.shields.io/badge/tools-17-purple" alt="Tools">
+    <img src="https://img.shields.io/badge/channels-11-teal" alt="Channels">
     <a href="https://github.com/airajakathi/Sharanbot"><img src="https://img.shields.io/github/stars/airajakathi/Sharanbot?style=social" alt="Stars"></a>
   </p>
 </div>
 
 ---
 
-**SharanBot** is an autonomous AI agent framework that commands a team of 26 specialist agents, self-heals from any error, learns from its mistakes, and gets the job done — no hand-holding required.
+**SharanBot** is an autonomous AI agent framework that commands a team of 32 specialist agents, self-heals from any error, learns from its mistakes, and gets the job done — no hand-holding required.
 
 Built for builders who want an AI that acts like a **demon boss**: fierce, relentless, and in total control.
 
@@ -30,11 +31,12 @@ Built for builders who want an AI that acts like a **demon boss**: fierce, relen
 | **Memory** | Forgets everything | Cross-session superhuman memory |
 | **Credentials** | Plaintext config | Encrypted vault (PBKDF2 + Fernet) |
 | **Monitoring** | Check logs manually | Real-time dashboard with WebSocket |
+| **Browser** | External dependency | Native Tandem Browser with 24 MCP tools |
 
 ## Core Powers
 
 ### Multi-Agent Team Orchestration
-Decomposes complex tasks into a DAG of subtasks, assigns specialist agents (architect, frontend, backend, devops, tester, security, data-scientist, and 19 more), and orchestrates parallel execution with quality gates.
+Decomposes complex tasks into a DAG of subtasks, assigns specialist agents (architect, frontend, backend, devops, tester, security, data-engineer, and 25 more), and orchestrates parallel execution with quality gates.
 
 ### Self-Healing & Auto-Recovery
 Never crashes permanently. The **RecoveryEngine** handles 8 error categories with circuit breakers:
@@ -70,17 +72,30 @@ Secure credential storage for API keys, tokens, and passwords:
 - Slash-path keys: `provider/openrouter/apiKey` → nested config overlay
 - Persistent `vault.json` with encrypted entries
 
+### Tandem Browser (Native)
+SharanBot ships with **Tandem Browser** — a native Electron-based browser built for human-AI collaboration:
+
+- **Human + AI shared browsing**: You browse normally, the AI agent watches and assists via the Wingman panel
+- **24 MCP tools**: Navigate, click, type, screenshot, read pages, manage tabs, search bookmarks & history, create AI tasks with approval gates
+- **Computer tool**: Coordinate-based visual automation (mouse, keyboard, screenshot) — available to all agents
+- **OpenClaw Bridge**: WebSocket server on port `18789` linking SharanBot to the Wingman chat panel
+- **Tandem API**: REST + SSE API on port `8766` with 250+ endpoints for full browser control
+- **8-layer security**: Network shield, credential leak scanning, AST-level JS analysis, human-in-the-loop approval
+- **Native dashboard panel**: Real-time SharanBot dashboard embedded directly in the Wingman panel (WebSocket-powered, no iframe)
+- **Liquid Glass Lite**: Dark-themed UI with glass effects and smooth animations
+
 ### Real-Time Dashboard
 Live web dashboard showing everything SharanBot is doing:
-- **6 tabs**: Overview, Services, Teams, Health, Vault, Logs
+- **7 tabs**: Overview, Services, Teams, Health, Integrations, Projects, Logs
 - **WebSocket**: Auto-reconnecting real-time updates every 3 seconds
 - **Service monitoring**: Running apps, monitors, agents with status badges
 - **Team tracking**: Active teams with task progress (completed/total)
 - **Health view**: Circuit breaker visualization (closed/open)
 - **Learning summary**: Patterns learned, successful fixes by category
-- **Vault keys**: Listed with masked values
+- **Integration overview**: MCP servers, tools, skills, agent profiles, pipelines, plugins
+- **Project browser**: Workspace project discovery with file viewer and one-click run
 - **Activity log**: Live timestamp-tagged events
-- Professional dark-themed SPA with minimal color palette at `http://127.0.0.1:18791`
+- Available at `http://127.0.0.1:18795` (configurable) and natively inside the Tandem Browser Wingman panel
 
 ### Autonomous Service Manager
 Run and monitor long-lived services, deployed apps, and autonomous agents:
@@ -90,10 +105,6 @@ Run and monitor long-lived services, deployed apps, and autonomous agents:
 - **Log buffering**: 500-line circular buffer per service, accessible via API
 - **Persistence**: Service configs saved to `services.json`, restored on restart
 - Service kinds: `app` | `agent` | `monitor` | `cron` | `custom`
-
-### Browser & Sandbox
-- **Playwright** browser control: navigate, click, type, screenshot
-- **Docker** sandbox: execute code in isolated containers
 
 ### Self-Evolution
 Hot-reload at runtime without restart:
@@ -107,14 +118,11 @@ Hot-reload at runtime without restart:
 
 ```bash
 git clone https://github.com/airajakathi/Sharanbot.git
-cd SharanBot
+cd Sharanbot
 pip install -e .
 
 # Optional: for encrypted vault
 pip install cryptography
-
-# Optional: for real-time dashboard
-pip install aiohttp
 ```
 
 ### 2. Configure
@@ -143,7 +151,7 @@ Edit `~/.sharanbot/config.json`:
   "dashboard": {
     "enable": true,
     "host": "127.0.0.1",
-    "port": 18791
+    "port": 18795
   }
 }
 ```
@@ -151,11 +159,11 @@ Edit `~/.sharanbot/config.json`:
 ### 3. Run
 
 ```bash
-# CLI mode
+# CLI mode — interactive chat
 sharanbot agent
 
-# Gateway mode (connects to Telegram, Discord, etc.)
-# Also starts the real-time dashboard at http://127.0.0.1:18791
+# Gateway mode — connects to Telegram, Discord, etc.
+# Also starts: dashboard, Tandem Browser, OpenClaw bridge
 sharanbot gateway
 ```
 
@@ -207,34 +215,95 @@ Example Telegram setup:
 }
 ```
 
+## Agent Profiles
+
+SharanBot includes **32 specialist agent profiles** (3 built-in + 29 plugin-based):
+
+| Profile | Role |
+|---------|------|
+| `general` | Default all-purpose agent |
+| `coder` | Coding-focused (extended iterations) |
+| `researcher` | Read-only research with web access |
+| `architect` | System design & architecture |
+| `backend_dev` | Backend development |
+| `frontend_dev` | Frontend development |
+| `devops` | CI/CD & infrastructure |
+| `security` | Security analysis & hardening |
+| `tester` | Test writing & QA |
+| `debugger` | Bug investigation |
+| `code_reviewer` | Code review |
+| `data_engineer` | Data pipeline design |
+| `mcp_builder` | MCP server development |
+| `orchestrator` | Multi-agent orchestration |
+| `planner` | Task planning & decomposition |
+| And 17 more... | (see `~/.sharanbot/workspace/plugins/agents/`) |
+
+## Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `filesystem` | Read, write, edit, list, search files |
+| `shell` | Execute shell commands |
+| `web` | DuckDuckGo search + page fetch |
+| `browser` | Playwright browser control |
+| `tandem_browser` | Tandem Browser integration (24 MCP tools) |
+| `computer` | Mouse, keyboard, screenshot automation |
+| `wingman` | Wingman panel chat interaction |
+| `sandbox` | Docker sandbox execution |
+| `mcp` | Model Context Protocol tool bridge |
+| `cron` | Scheduled task management |
+| `spawn` | Subagent spawning |
+| `worker` | Background worker task distribution |
+| `message` | Cross-channel message delivery |
+| `evolve` | Agent self-improvement |
+| `reload` | Hot-reload tools & config |
+| `dynamic` | Dynamic tool loading from workspace |
+| `import_agent` | Import & compose agent code |
+
 ## Architecture
 
 ```
 SharanBot
-├── Agent Loop ─────── LLM ↔ Tool execution cycle
-│   ├── RecoveryEngine ─ Circuit breakers + auto-recovery (8 categories)
-│   ├── LearningStore ── Persistent error memory + adaptive cooldowns
-│   ├── Autopilot ────── Proactive routing + superhuman memory
-│   └── Context ──────── System prompt + memory consolidation
-├── Team Orchestrator ─ DAG-based multi-agent execution
-│   ├── 26 Agent Profiles (architect, frontend, backend, tester...)
-│   ├── Task Planner ──── LLM-powered decomposition
-│   ├── Quality Gates ─── Output validation
-│   └── Auto-Recovery ─── Task retry on failure
-├── Vault ─────────── Encrypted credential store (PBKDF2 + Fernet)
-├── Service Manager ── Autonomous service lifecycle + health checks
-├── Dashboard ─────── Real-time web UI (aiohttp + WebSocket)
-├── Tools ─────────── Filesystem, Shell, Web, Browser, Sandbox, MCP
-├── Workers ───────── GSD-2 background processes with health checks
-├── Subagents ─────── Background task execution (3 nesting levels)
-├── Providers ─────── 20+ LLM providers with 5-level retry
-├── Channels ──────── 11 chat platforms
-└── Self-Evolution ── Hot-reload everything at runtime
+├── Gateway ──────────── Port 18790 (configurable)
+│   ├── Agent Loop ───── LLM ↔ Tool execution cycle
+│   │   ├── RecoveryEngine ─ Circuit breakers + auto-recovery
+│   │   ├── LearningStore ── Persistent error memory
+│   │   ├── Autopilot ────── Proactive routing + superhuman memory
+│   │   └── Context ──────── System prompt + memory consolidation
+│   ├── Team Orchestrator ─ DAG-based multi-agent execution
+│   │   ├── 32 Agent Profiles
+│   │   ├── Task Planner ──── LLM-powered decomposition
+│   │   ├── Quality Gates ─── Output validation
+│   │   └── Auto-Recovery ─── Task retry on failure
+│   ├── Vault ─────────── Encrypted credential store (PBKDF2 + Fernet)
+│   ├── Service Manager ── Autonomous service lifecycle
+│   ├── Workers ───────── GSD-2 background processes
+│   ├── Subagents ─────── Background task execution (3 nesting levels)
+│   └── Self-Evolution ── Hot-reload everything at runtime
+├── Dashboard ────────── Port 18795 — Real-time web UI (WebSocket)
+├── Tandem Browser ───── Native Electron browser
+│   ├── Wingman Panel ─── AI chat + activity + screenshots + dashboard
+│   ├── OpenClaw Bridge ─ Port 18789 — WebSocket link to SharanBot
+│   ├── Browser API ───── Port 8766 — REST + SSE (250+ endpoints)
+│   ├── Computer Tool ─── Coordinate-based mouse/keyboard/screenshot
+│   └── MCP Server ────── 24 browser automation tools
+├── Tools ─────────────── 17 built-in tools + MCP extensions
+├── Providers ─────────── 20+ LLM providers with 5-level retry
+└── Channels ──────────── 11 chat platforms
 ```
+
+## Ports Reference
+
+| Port | Service | Protocol |
+|------|---------|----------|
+| `18790` | SharanBot Gateway | HTTP |
+| `18795` | Dashboard | HTTP + WebSocket |
+| `18789` | OpenClaw Bridge | HTTP + WebSocket |
+| `8766` | Tandem Browser API | HTTP + SSE |
 
 ## Dashboard
 
-The real-time dashboard runs alongside the gateway at `http://127.0.0.1:18791`:
+The real-time dashboard runs alongside the gateway at `http://127.0.0.1:18795` and is also embedded natively in the Tandem Browser Wingman panel:
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -262,6 +331,8 @@ Dashboard API endpoints:
 - `GET /api/cron` — Scheduled cron jobs
 - `GET /api/health` — Recovery engine + circuit breakers
 - `GET /api/vault/keys` — Vault credential keys (no values)
+- `GET /api/projects` — Workspace projects
+- `GET /api/integrations` — MCP servers, tools, skills, profiles, pipelines, plugins
 - `WS /ws` — Real-time WebSocket updates (3s interval)
 
 ## MCP (Model Context Protocol)
@@ -283,12 +354,14 @@ SharanBot supports MCP for extended tool capabilities:
 }
 ```
 
+Tandem Browser provides 24 MCP tools out of the box for browser automation — no additional configuration needed.
+
 ## Docker
 
 ```bash
 docker build -t sharanbot .
 docker run -v ~/.sharanbot:/root/.sharanbot --rm sharanbot onboard
-docker run -v ~/.sharanbot:/root/.sharanbot -p 18790:18790 -p 18791:18791 sharanbot gateway
+docker run -v ~/.sharanbot:/root/.sharanbot -p 18790:18790 -p 18795:18795 sharanbot gateway
 ```
 
 Docker Compose:
@@ -308,27 +381,42 @@ sharanbot/
 │   ├── memory.py          # Persistent memory + consolidation
 │   ├── subagent.py        # Background subagent execution
 │   ├── worker.py          # Worker manager + health checks
-│   ├── profiles.py        # 26 agent profiles
+│   ├── profiles.py        # Agent profile loader
 │   ├── team/              # Multi-agent orchestration
 │   │   ├── orchestrator.py
 │   │   ├── dag.py         # Task dependency graph
 │   │   ├── planner.py     # LLM-powered decomposition
 │   │   ├── quality.py     # Quality gates
 │   │   └── autopilot.py   # Proactive routing + superhuman memory
-│   └── tools/             # Built-in tools
+│   └── tools/             # 17 built-in tools
 │       ├── filesystem.py  # Read/write/edit/list
 │       ├── shell.py       # Command execution
 │       ├── web.py         # Search & fetch
 │       ├── browser.py     # Playwright control
+│       ├── computer.py    # Mouse/keyboard/screenshot
+│       ├── tandem_browser.py # Tandem Browser MCP integration
+│       ├── wingman.py     # Wingman panel interaction
 │       ├── sandbox.py     # Docker sandbox
-│       └── mcp.py         # MCP integration
+│       └── mcp.py         # MCP protocol bridge
+├── tandem/                # Tandem Browser integration
+│   ├── manager.py         # Electron process lifecycle
+│   └── openclaw_bridge.py # WebSocket bridge (port 18789)
 ├── vault/                 # Encrypted credential store
 ├── services/              # Autonomous service manager
 ├── dashboard/             # Real-time web UI + WebSocket
 ├── providers/             # 20+ LLM providers
 ├── channels/              # 11 chat platforms
-├── config/                # Config + hot-reload + dashboard config
+├── config/                # Config + hot-reload
 └── cli/                   # CLI commands
+tandem-browser/            # Native Electron browser (inbuilt)
+├── main/                  # Electron main process
+├── shell/                 # Browser shell (HTML/CSS/JS)
+│   ├── index.html         # Main shell with Wingman panel
+│   ├── js/                # Tab management, sidebar, wingman, dashboard
+│   └── css/               # Liquid Glass Lite design system
+├── api/                   # REST + SSE API (port 8766)
+├── mcp/                   # 24 MCP tools for browser automation
+└── package.json           # Electron app config (v0.65.5)
 ```
 
 ## Contributing
