@@ -182,7 +182,7 @@ class TandemBrowserTool(Tool):
 
     def _is_reachable(self) -> bool:
         try:
-            r = requests.get(f"{TANDEM_API_BASE}/health", timeout=2)
+            r = requests.get(f"{TANDEM_API_BASE}/status", timeout=2)
             return r.status_code == 200
         except Exception:
             return False
@@ -368,7 +368,7 @@ class TandemBrowserTool(Tool):
         """Find elements using semantic locator queries."""
         if not text:
             return "Error: 'text' query is required for find action."
-        result = self._api("POST", "/find", json={"query": text, "by": by})
+        result = self._api("POST", "/find", json={"value": text, "by": by})
         if isinstance(result, dict):
             elements = result.get("elements", [result])
         elif isinstance(result, list):
@@ -387,14 +387,14 @@ class TandemBrowserTool(Tool):
         """Find element by semantic query and click it."""
         if not text:
             return "Error: 'text' query is required."
-        result = self._api("POST", "/find/click", json={"query": text, "by": by})
+        result = self._api("POST", "/find/click", json={"value": text, "by": by})
         return f"Clicked element matching '{text}' (by {by})"
 
     def _find_fill(self, selector: str = "", text: str = "", by: str = "text", **_: Any) -> str:
         """Find an input element and fill it with text."""
         if not selector or not text:
             return "Error: 'selector' (query) and 'text' are required."
-        result = self._api("POST", "/find/fill", json={"query": selector, "value": text, "by": by})
+        result = self._api("POST", "/find/fill", json={"value": selector, "fillValue": text, "by": by})
         return f"Filled '{selector}' with '{text}'"
 
     # ------------------------------------------------------------------

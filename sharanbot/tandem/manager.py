@@ -14,7 +14,7 @@ import requests
 from loguru import logger
 
 # Default API port for tandem-browser
-TANDEM_API_PORT = 8765
+TANDEM_API_PORT = 8766
 TANDEM_API_BASE = f"http://127.0.0.1:{TANDEM_API_PORT}"
 
 
@@ -68,7 +68,7 @@ class TandemManager:
     def is_running(self) -> bool:
         """Check if tandem-browser API is reachable."""
         try:
-            r = requests.get(f"{TANDEM_API_BASE}/health", timeout=2)
+            r = requests.get(f"{TANDEM_API_BASE}/status", timeout=2)
             return r.status_code == 200
         except Exception:
             return False
@@ -128,7 +128,6 @@ class TandemManager:
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
             )
         except Exception as e:
             logger.error("Failed to start Tandem Browser: {}", e)
