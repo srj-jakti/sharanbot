@@ -277,17 +277,28 @@ class DashboardServer:
         if not workspace.is_dir():
             return projects
 
-        for entry in sorted(workspace.iterdir()):
+        try:
+            entries = sorted(workspace.iterdir())
+        except OSError:
+            return projects
+
+        for entry in entries:
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            if entry.name in ("memory", "plugins", "skills", "__pycache__"):
+            if entry.name in ("memory", "plugins", "__pycache__", "node_modules"):
                 continue
 
             ptype = self._detect_project_type(entry)
-            if ptype == "unknown":
-                continue
 
-            file_count = sum(1 for f in entry.rglob("*") if f.is_file() and "node_modules" not in f.parts and ".git" not in f.parts)
+            try:
+                file_count = sum(
+                    1 for f in entry.rglob("*")
+                    if f.is_file()
+                    and "node_modules" not in f.parts
+                    and ".git" not in f.parts
+                )
+            except OSError:
+                file_count = 0
 
             projects.append({
                 "name": entry.name,
