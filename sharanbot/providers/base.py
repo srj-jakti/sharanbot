@@ -74,10 +74,13 @@ class LLMProvider(ABC):
     while maintaining a consistent interface.
     """
 
-    _CHAT_RETRY_DELAYS = (1, 2, 4)
+    _CHAT_RETRY_DELAYS = (1, 2, 4, 8, 16)  # 5 attempts with exponential backoff
     _TRANSIENT_ERROR_MARKERS = (
         "429",
         "rate limit",
+        "rate_limit",
+        "too many requests",
+        "quota",
         "500",
         "502",
         "503",
@@ -96,6 +99,11 @@ class LLMProvider(ABC):
         self.api_key = api_key
         self.api_base = api_base
         self.generation: GenerationSettings = GenerationSettings()
+        self._recovery_engine = None  # Set by AgentLoop after construction
+
+    def set_recovery_engine(self, engine) -> None:
+        """Attach the recovery engine for adaptive retry."""
+        self._recovery_engine = engine
 
     @staticmethod
     def _sanitize_empty_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -256,6 +264,9 @@ class LLMProvider(ABC):
             response = await self._safe_chat(**kw)
 
             if response.finish_reason != "error":
+                # Successful — reset circuit if recovery engine is attached
+                if self._recovery_engine:
+                    self._recovery_engine.reset_circuit("llm_provider")
                 return response
 
             if not self._is_transient_error(response.content):
@@ -264,6 +275,20 @@ class LLMProvider(ABC):
                     logger.warning("Non-transient LLM error with image content, retrying without images")
                     return await self._safe_chat(**{**kw, "messages": stripped})
                 return response
+
+            # Use recovery engine for adaptive backoff if available
+            if self._recovery_engine:
+                is_rate_limit = any(
+                    m in (response.content or "").lower()
+                    for m in ("429", "rate limit", "rate_limit", "too many requests", "quota")
+                )
+                recovered = await self._recovery_engine.handle_error(
+                    response.content or "transient LLM error",
+                    component="llm_provider",
+                    context={"attempt": attempt, "model": model or "default"},
+                )
+                if recovered:
+                    continue  # Recovery engine already applied cooldown
 
             logger.warning(
                 "LLM transient error (attempt {}/{}), retrying in {}s: {}",

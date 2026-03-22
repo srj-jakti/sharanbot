@@ -67,10 +67,15 @@ class TeamOrchestrator:
         self.message_bus = message_bus
         self.workspace = workspace
         self.task_timeout = task_timeout
+        self._recovery_engine = None  # Set via set_recovery_engine()
 
         self.planner = TaskPlanner(provider, model, profile_registry)
         self.quality = QualityGate(provider, model)
         self.teams: dict[str, TeamSession] = {}
+
+    def set_recovery_engine(self, engine) -> None:
+        """Attach a RecoveryEngine for auto-recovery during task execution."""
+        self._recovery_engine = engine
 
     # ------------------------------------------------------------------
     # Public API
@@ -304,15 +309,43 @@ class TeamOrchestrator:
 
         except asyncio.TimeoutError:
             error_msg = f"Task timed out after {self.task_timeout}s"
+            logger.error("Task {} timed out after {}s", task.id, self.task_timeout)
+
+            # Attempt auto-recovery on timeout
+            if self._recovery_engine:
+                recovered = await self._recovery_engine.handle_error(
+                    TimeoutError(error_msg),
+                    component=f"team_task_{task.id}",
+                    context={"task_id": task.id, "team_id": session.team_id},
+                )
+                if recovered and task.retry_count < task.max_retries:
+                    logger.info("Task {} auto-recovered from timeout, retrying", task.id)
+                    dag.tasks[task.id].status = "retrying"
+                    tracer.trace_retry(agent_id, task.id, task.retry_count)
+                    return
+
             dag.mark_failed(task.id, error_msg)
             tracer.trace_fail(agent_id, task.id, error_msg)
-            logger.error("Task {} timed out after {}s", task.id, self.task_timeout)
 
         except Exception as e:
             error_msg = str(e)
+            logger.error("Task {} failed: {}", task.id, error_msg)
+
+            # Attempt auto-recovery on generic errors
+            if self._recovery_engine:
+                recovered = await self._recovery_engine.handle_error(
+                    e,
+                    component=f"team_task_{task.id}",
+                    context={"task_id": task.id, "team_id": session.team_id},
+                )
+                if recovered and task.retry_count < task.max_retries:
+                    logger.info("Task {} auto-recovered, retrying", task.id)
+                    dag.tasks[task.id].status = "retrying"
+                    tracer.trace_retry(agent_id, task.id, task.retry_count)
+                    return
+
             dag.mark_failed(task.id, error_msg)
             tracer.trace_fail(agent_id, task.id, error_msg)
-            logger.error("Task {} failed: {}", task.id, error_msg)
 
         finally:
             session.bus.unregister_agent(agent_id)

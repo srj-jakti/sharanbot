@@ -52,6 +52,11 @@ class SubagentManager:
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
         self._max_depth = 3  # Maximum nesting depth to prevent runaway spawning
+        self._recovery_engine = None  # Set via set_recovery_engine()
+
+    def set_recovery_engine(self, engine) -> None:
+        """Attach a RecoveryEngine for auto-recovery on subagent failures."""
+        self._recovery_engine = engine
 
     async def spawn(
         self,
@@ -209,6 +214,17 @@ class SubagentManager:
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             logger.error("Subagent [{}] failed: {}", task_id, e)
+
+            # Attempt auto-recovery if engine available
+            if self._recovery_engine:
+                recovered = await self._recovery_engine.handle_error(
+                    e,
+                    component=f"subagent_{task_id}",
+                    context={"task_id": task_id, "label": label, "depth": depth},
+                )
+                if recovered:
+                    logger.info("Subagent [{}] auto-recovered, but task already failed", task_id)
+
             await self._announce_result(task_id, label, task, error_msg, origin, "error")
 
     async def _announce_result(

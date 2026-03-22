@@ -38,6 +38,8 @@ from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.agent.tools.browser import BrowserTool
 from sharanbot.agent.tools.sandbox import SandboxTool
+from sharanbot.agent.learning import LearningStore
+from sharanbot.agent.recovery import RecoveryEngine
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -155,6 +157,17 @@ class AgentLoop:
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
         )
+
+        # Auto-recovery + self-learning
+        self.learning_store = LearningStore(workspace)
+        self.recovery_engine = RecoveryEngine(learning=self.learning_store, agent=self)
+        self.provider.set_recovery_engine(self.recovery_engine)
+        self.tools.set_recovery_engine(self.recovery_engine)
+        self.team_orchestrator.set_recovery_engine(self.recovery_engine)
+        self.subagents.set_recovery_engine(self.recovery_engine)
+        if self.worker_manager:
+            self.worker_manager.set_recovery_engine(self.recovery_engine)
+
         self._register_default_tools()
 
         # Dynamic tools from workspace/plugins/tools/
@@ -218,26 +231,52 @@ class AgentLoop:
         self.tools.register(SandboxTool(workspace=self.workspace))
 
     async def _connect_mcp(self) -> None:
-        """Connect to configured MCP servers (one-time, lazy)."""
+        """Connect to configured MCP servers (one-time, lazy) with auto-recovery."""
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
         self._mcp_connecting = True
         from sharanbot.agent.tools.mcp import connect_mcp_servers
-        try:
-            self._mcp_stack = AsyncExitStack()
-            await self._mcp_stack.__aenter__()
-            await connect_mcp_servers(self._mcp_servers, self.tools, self._mcp_stack)
-            self._mcp_connected = True
-        except BaseException as e:
-            logger.error("Failed to connect MCP servers (will retry next message): {}", e)
-            if self._mcp_stack:
-                try:
-                    await self._mcp_stack.aclose()
-                except Exception:
-                    pass
-                self._mcp_stack = None
-        finally:
-            self._mcp_connecting = False
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self._mcp_stack = AsyncExitStack()
+                await self._mcp_stack.__aenter__()
+                await connect_mcp_servers(self._mcp_servers, self.tools, self._mcp_stack)
+                self._mcp_connected = True
+                if attempt > 1:
+                    self.recovery_engine.reset_circuit("mcp")
+                    self.learning_store.record(
+                        category="mcp_failure",
+                        error_signature="mcp_failure:connect",
+                        description="MCP connection recovered",
+                        fix_applied=f"Retry attempt {attempt} succeeded",
+                        success=True,
+                    )
+                break
+            except BaseException as e:
+                logger.error("Failed to connect MCP servers (attempt {}/{}): {}", attempt, max_attempts, e)
+                if self._mcp_stack:
+                    try:
+                        await self._mcp_stack.aclose()
+                    except Exception:
+                        pass
+                    self._mcp_stack = None
+                if attempt < max_attempts:
+                    wait = 2 ** attempt
+                    logger.info("Retrying MCP connection in {}s...", wait)
+                    self.learning_store.record(
+                        category="mcp_failure",
+                        error_signature="mcp_failure:connect",
+                        description=str(e)[:200],
+                        fix_applied=f"Retry with {wait}s backoff",
+                        success=False,
+                        cooldown_seconds=wait,
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error("MCP connection failed after {} attempts, will retry next message", max_attempts)
+        self._mcp_connecting = False
 
     async def handle_reload(self, component: str, target: str | None = None) -> str:
         """Dispatch a reload request for the given component."""
@@ -408,6 +447,17 @@ class AgentLoop:
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
                     logger.error("LLM returned error: {}", (clean or "")[:200])
+
+                    # Auto-recovery: try to recover from LLM errors
+                    recovered = await self.recovery_engine.handle_error(
+                        clean or "LLM error",
+                        component="llm_provider",
+                        context={"iteration": iteration},
+                    )
+                    if recovered and iteration < self.max_iterations:
+                        logger.info("LLM error auto-recovered, continuing loop")
+                        continue  # Retry the LLM call
+
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
                     break
                 messages = self.context.add_assistant_message(
@@ -491,26 +541,42 @@ class AgentLoop:
         asyncio.create_task(_do_restart())
 
     async def _dispatch(self, msg: InboundMessage) -> None:
-        """Process a message under the global lock."""
-        async with self._processing_lock:
-            try:
-                response = await self._process_message(msg)
-                if response is not None:
-                    await self.bus.publish_outbound(response)
-                elif msg.channel == "cli":
+        """Process a message under the global lock, with auto-recovery on failure."""
+        max_recovery_attempts = 2
+
+        for attempt in range(1, max_recovery_attempts + 1):
+            async with self._processing_lock:
+                try:
+                    response = await self._process_message(msg)
+                    if response is not None:
+                        await self.bus.publish_outbound(response)
+                    elif msg.channel == "cli":
+                        await self.bus.publish_outbound(OutboundMessage(
+                            channel=msg.channel, chat_id=msg.chat_id,
+                            content="", metadata=msg.metadata or {},
+                        ))
+                    return  # Success
+                except asyncio.CancelledError:
+                    logger.info("Task cancelled for session {}", msg.session_key)
+                    raise
+                except Exception as exc:
+                    logger.exception("Error processing message for session {} (attempt {})", msg.session_key, attempt)
+
+                    if attempt < max_recovery_attempts:
+                        recovered = await self.recovery_engine.handle_error(
+                            exc,
+                            component="message_dispatch",
+                            context={"session": msg.session_key, "attempt": attempt},
+                        )
+                        if recovered:
+                            logger.info("Message dispatch auto-recovered, retrying")
+                            continue
+
                     await self.bus.publish_outbound(OutboundMessage(
                         channel=msg.channel, chat_id=msg.chat_id,
-                        content="", metadata=msg.metadata or {},
+                        content="Sorry, I encountered an error. Auto-recovery was attempted but failed.",
                     ))
-            except asyncio.CancelledError:
-                logger.info("Task cancelled for session {}", msg.session_key)
-                raise
-            except Exception:
-                logger.exception("Error processing message for session {}", msg.session_key)
-                await self.bus.publish_outbound(OutboundMessage(
-                    channel=msg.channel, chat_id=msg.chat_id,
-                    content="Sorry, I encountered an error.",
-                ))
+                    return
 
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""

@@ -77,6 +77,33 @@ class WorkerManager:
         self.type_registry = worker_type_registry or WorkerTypeRegistry(
             plugins_dir=workspace / "plugins" / "workers"
         )
+        self._recovery_engine = None  # Set via set_recovery_engine()
+
+    def set_recovery_engine(self, engine) -> None:
+        """Attach a RecoveryEngine for auto-recovery of stuck workers."""
+        self._recovery_engine = engine
+
+    async def health_check(self) -> dict[str, str]:
+        """Check all workers and auto-restart stuck/dead ones.
+
+        Returns a mapping of worker_id to status.
+        """
+        results: dict[str, str] = {}
+        for wid, worker in list(self._workers.items()):
+            if worker.process.returncode is not None and worker.status == "running":
+                # Process exited but status not updated
+                worker.status = "stopped"
+                logger.warning("Worker [{}] died unexpectedly (rc={})", wid, worker.process.returncode)
+                if self._recovery_engine:
+                    await self._recovery_engine.handle_error(
+                        RuntimeError(f"Worker {wid} exited with code {worker.process.returncode}"),
+                        component=f"worker_{wid}",
+                        context={"worker_id": wid, "label": worker.label},
+                    )
+                results[wid] = "dead"
+            else:
+                results[wid] = worker.status
+        return results
 
     # ------------------------------------------------------------------
     # Public API
