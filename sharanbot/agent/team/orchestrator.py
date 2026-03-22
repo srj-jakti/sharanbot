@@ -48,7 +48,7 @@ class TeamOrchestrator:
     """
 
     # Per-task timeout in seconds — prevents hung subagents from blocking the team
-    DEFAULT_TASK_TIMEOUT = 300  # 5 minutes
+    DEFAULT_TASK_TIMEOUT = 600  # 10 minutes
 
     def __init__(
         self,

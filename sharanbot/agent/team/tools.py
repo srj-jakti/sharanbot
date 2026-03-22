@@ -87,7 +87,12 @@ class TeamCreateTool(Tool):
         asyncio.create_task(self._orchestrator.run_team(team_id))
 
         status = self._orchestrator.get_team_status(team_id)
-        return f"Team created and running.\n\n{status}"
+        return (
+            f"Team created and running.\n\n{status}\n\n"
+            "⚠️ The team works in the background. Do NOT poll team_status in a loop. "
+            "Instead, continue working on other aspects of the project (e.g., create files, "
+            "write code directly) and check team_status only occasionally (every 5-10 tool calls)."
+        )
 
 
 class TeamStatusTool(Tool):
@@ -95,6 +100,7 @@ class TeamStatusTool(Tool):
 
     def __init__(self, orchestrator: "TeamOrchestrator"):
         self._orchestrator = orchestrator
+        self._poll_count: dict[str, int] = {}  # team_id -> poll count
 
     @property
     def name(self) -> str:
@@ -102,7 +108,13 @@ class TeamStatusTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Check the status and progress of a multi-agent team."
+        return (
+            "Check the status and progress of a multi-agent team. "
+            "IMPORTANT: Do NOT poll this repeatedly in a tight loop. "
+            "The tool automatically waits when tasks are still running. "
+            "Only call this every few iterations. While waiting, work on other things "
+            "or create files directly instead of busy-polling."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -118,8 +130,33 @@ class TeamStatusTool(Tool):
         }
 
     async def execute(self, team_id: str | None = None, **kwargs: Any) -> str:
+        import asyncio
+
         if team_id:
-            return self._orchestrator.get_team_status(team_id)
+            # Track poll count per team
+            count = self._poll_count.get(team_id, 0) + 1
+            self._poll_count[team_id] = count
+
+            status = self._orchestrator.get_team_status(team_id)
+
+            # Check if team is still running (not completed/failed)
+            session = self._orchestrator.teams.get(team_id)
+            if session and session.status == "running":
+                # Adaptive backoff: wait longer as poll count increases
+                wait_secs = min(10 + count * 5, 30)  # 15s, 20s, 25s, 30s max
+                await asyncio.sleep(wait_secs)
+                # Re-fetch after waiting
+                status = self._orchestrator.get_team_status(team_id)
+                status += (
+                    f"\n\n⏱️ Waited {wait_secs}s before returning. "
+                    f"Poll #{count}. Do NOT call team_status again immediately. "
+                    "Work on other parts of the project while the team executes."
+                )
+            else:
+                # Team is done, reset poll count
+                self._poll_count.pop(team_id, None)
+
+            return status
 
         teams = self._orchestrator.list_teams()
         if not teams:
