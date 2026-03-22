@@ -26,6 +26,7 @@ from sharanbot.agent.tools.registry import ToolRegistry
 from sharanbot.agent.tools.shell import ExecTool
 from sharanbot.agent.tools.spawn import SpawnTool
 from sharanbot.agent.tools.web import WebFetchTool, WebSearchTool
+from sharanbot.agent.tools.worker import WorkerStartTool, WorkerStatusTool, WorkerSteerTool, WorkerStopTool
 from sharanbot.bus.events import InboundMessage, OutboundMessage
 from sharanbot.utils.helpers import build_status_content
 from sharanbot.bus.queue import MessageBus
@@ -33,6 +34,7 @@ from sharanbot.providers.base import LLMProvider
 from sharanbot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
+    from sharanbot.agent.worker import WorkerManager
     from sharanbot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
     from sharanbot.cron.service import CronService
 
@@ -67,6 +69,7 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
+        worker_manager: WorkerManager | None = None,
     ):
         from sharanbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -82,6 +85,7 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
+        self.worker_manager = worker_manager
         self._start_time = time.time()
         self._last_usage: dict[str, int] = {}
 
@@ -138,6 +142,11 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+        if self.worker_manager:
+            self.tools.register(WorkerStartTool(manager=self.worker_manager))
+            self.tools.register(WorkerStatusTool(manager=self.worker_manager))
+            self.tools.register(WorkerSteerTool(manager=self.worker_manager))
+            self.tools.register(WorkerStopTool(manager=self.worker_manager))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

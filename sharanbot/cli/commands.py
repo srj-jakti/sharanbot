@@ -543,6 +543,20 @@ def gateway(
     cron_store_path = get_cron_dir() / "jobs.json"
     cron = CronService(cron_store_path)
 
+    # Create worker manager if enabled
+    worker_mgr = None
+    if config.worker.enable:
+        from sharanbot.agent.worker import WorkerManager
+        provider_cfg, provider_name = config._match_provider()
+        worker_mgr = WorkerManager(
+            workspace=config.workspace_path,
+            api_key=provider_cfg.api_key if provider_cfg else "",
+            api_base=provider_cfg.api_base if provider_cfg else None,
+            model=config.agents.defaults.model,
+            extra_headers=dict(provider_cfg.extra_headers) if provider_cfg and provider_cfg.extra_headers else None,
+            mcp_servers=config.tools.mcp_servers,
+        )
+
     # Create agent with cron service
     agent = AgentLoop(
         bus=bus,
@@ -559,6 +573,7 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
+        worker_manager=worker_mgr,
     )
 
     # Set cron callback (needs agent)
@@ -691,6 +706,8 @@ def gateway(
             console.print(traceback.format_exc())
         finally:
             await agent.close_mcp()
+            if worker_mgr:
+                await worker_mgr.stop_all()
             heartbeat.stop()
             cron.stop()
             agent.stop()

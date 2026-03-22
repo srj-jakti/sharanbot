@@ -143,6 +143,12 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
+class WorkerConfig(Base):
+    """GSD worker configuration."""
+
+    enable: bool = True  # Enable worker tools
+
+
 class Config(BaseSettings):
     """Root configuration for sharanbot."""
 
@@ -151,6 +157,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    worker: WorkerConfig = Field(default_factory=WorkerConfig)
 
     @property
     def workspace_path(self) -> Path:

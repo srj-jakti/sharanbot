@@ -1,0 +1,12 @@
+{
+  "name": "sharanbot-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SharanBot Worker Engine — Vibe Agentic Engineering",
+  "dependencies": {
+    "gsd-pi": "^2.41.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
