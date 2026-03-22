@@ -7,6 +7,7 @@ on the MessageBus so live components can update without restart.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from pathlib import Path
 
 from loguru import logger
@@ -62,7 +63,9 @@ class ConfigWatcher:
                     logger.info("Config file changed — triggering reload")
                     try:
                         new_config = load_config(self._path)
-                        await self._on_change(new_config)
+                        result = self._on_change(new_config)
+                        if inspect.isawaitable(result):
+                            await result
                     except Exception as exc:
                         logger.error("Config reload failed: {}", exc)
             except asyncio.CancelledError:

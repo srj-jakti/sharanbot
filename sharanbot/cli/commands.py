@@ -723,7 +723,7 @@ def gateway(
         try:
             await cron.start()
             await heartbeat.start()
-            config_watcher.start()
+            await config_watcher.start()
             await asyncio.gather(
                 agent.run(),
                 channels.start_all(),
