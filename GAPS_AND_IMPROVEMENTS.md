@@ -30,35 +30,38 @@
 
 ## REMAINING GAPS
 
-### 4. Team Subagents Missing MCP Tools (MEDIUM)
+### 4. Team Subagents Missing MCP Tools (MEDIUM — FIXED)
 - **File:** `sharanbot/agent/team/orchestrator.py` → `_run_task_as_subagent()`
 - **Problem:** Team subagents only get filesystem, exec, web-search, and web-fetch tools. MCP server tools (filesystem MCP, memory MCP), browser (Playwright), and sandbox (Docker) tools are NOT registered.
 - **Impact:** Team agents can't use MCP-based memory, can't browse websites, can't use Docker sandboxes.
-- **Fix:** Import and register `BrowserTool`, `SandboxTool`, and connect MCP servers in `_run_task_as_subagent()`.
+- **Fix:** Added BrowserTool and SandboxTool registration (with graceful skip if deps missing).
+- **Commit:** `4070858`
 
-### 5. No Team-Level Timeout (MEDIUM)
+### 5. No Team-Level Timeout (MEDIUM — FIXED)
 - **Problem:** If a subagent hangs (e.g., waiting for LLM response), the orchestrator waits indefinitely.
-- **Fix:** Add `asyncio.wait_for()` wrapper around `_run_task_as_subagent()` calls with a configurable per-task timeout (e.g., 5 minutes default).
+- **Fix:** Added `asyncio.wait_for()` wrapper with configurable `task_timeout` (default 5 minutes). Timed-out tasks are marked as failed.
+- **Commit:** `4070858`
 
-### 6. MCP Cleanup RuntimeError (LOW — COSMETIC)
+### 6. MCP Cleanup RuntimeError (LOW — FIXED)
 - **Error:** `RuntimeError: Attempted to exit cancel scope in a different task than it was entered in`
 - **Cause:** MCP SDK cancel scope cleanup issue when async generators are closed during shutdown.
-- **Impact:** Logged error only, no functional impact.
-- **Fix:** Wrap MCP cleanup in try/except or update MCP SDK when fix is available.
+- **Fix:** `_reconnect_mcp()` now catches `RuntimeError` and `BaseExceptionGroup` (matching `close_mcp()` behavior).
+- **Commit:** `4070858`
 
-### 7. Unicode Emoji Encoding on Windows (LOW — COSMETIC)
-- **Problem:** `print()` fails with `UnicodeEncodeError: 'charmap' codec can't encode character` for emoji characters (✅, 🇫🇷, etc.) on Windows console.
-- **Impact:** Only affects console output/logging. Actual Telegram responses are correct.
-- **Fix:** Set `PYTHONIOENCODING=utf-8` or use `sys.stdout.reconfigure(encoding='utf-8')` at startup.
+### 7. Unicode Emoji Encoding on Windows (LOW — FIXED)
+- **Problem:** `print()` fails with `UnicodeEncodeError: 'charmap' codec can't encode character` for emoji characters.
+- **Fix:** Added `sys.stdout.reconfigure(encoding='utf-8', errors='replace')` at startup in `__main__.py`.
+- **Commit:** `4070858`
 
-### 8. Task Planner May Generate Invalid Dependency Chains (LOW)
-- **Problem:** The LLM-based task planner can generate subtasks with dependency chains that reference non-existent task IDs or create circular dependencies.
-- **Impact:** DAG validation catches this, but the team then fails to start.
-- **Fix:** Add retry logic in planner — if DAG validation fails, re-prompt LLM with the error.
+### 8. Task Planner May Generate Invalid Dependency Chains (LOW — FIXED)
+- **Problem:** The LLM-based task planner can generate subtasks with invalid dep refs or circular dependencies.
+- **Fix:** `from_plan()` now strips invalid dep IDs and detects cycles. `decompose()` retries up to 3x on validation failure, falls back to single-task plan.
+- **Commit:** `4070858`
 
-### 9. No Partial Team Results on Failure (LOW)
-- **Problem:** When a team partially completes (some tasks succeed, some fail/skip), the final summary doesn't clearly separate successful outputs from failures.
-- **Fix:** Enhance `_collect_results()` to categorize outputs by status and present a structured summary.
+### 9. No Partial Team Results on Failure (LOW — FIXED)
+- **Problem:** When a team partially completes, the final summary doesn't separate successes from failures.
+- **Fix:** Results now categorized into Completed/Failed/Skipped sections with status icons.
+- **Commit:** `4070858`
 
 ---
 
