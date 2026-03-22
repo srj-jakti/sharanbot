@@ -118,14 +118,15 @@ class DashboardServer:
     async def _handle_cron(self, request: Any) -> Any:
         """Cron jobs list."""
         if hasattr(self.agent, "cron_service") and self.agent.cron_service:
+            from dataclasses import asdict
             jobs = self.agent.cron_service.list_jobs()
-            return web.json_response({"jobs": [j.to_dict() if hasattr(j, "to_dict") else str(j) for j in jobs]})
+            return web.json_response({"jobs": [asdict(j) for j in jobs]})
         return web.json_response({"jobs": []})
 
     async def _handle_health(self, request: Any) -> Any:
         """Recovery engine health check."""
         if hasattr(self.agent, "recovery_engine"):
-            health = self.agent.recovery_engine.health_check()
+            health = await self.agent.recovery_engine.health_check()
             return web.json_response(health)
         return web.json_response({"status": "no recovery engine"})
 
@@ -235,9 +236,20 @@ class DashboardServer:
             jobs = self.agent.cron_service.list_jobs()
             snapshot["cron_jobs"] = len(jobs)
 
-        # Health
+        # Health (extract circuit states directly, avoiding async health_check)
         if hasattr(self.agent, "recovery_engine"):
-            snapshot["health"] = self.agent.recovery_engine.health_check()
+            re = self.agent.recovery_engine
+            circuits = {}
+            for name, circuit in re._circuits.items():
+                circuits[name] = {
+                    "state": "open" if circuit.is_open else "closed",
+                    "failures": circuit.failures,
+                    "cooldown": circuit.cooldown,
+                }
+            snapshot["health"] = {
+                "status": "degraded" if any(c.is_open for c in re._circuits.values()) else "healthy",
+                "circuits": circuits,
+            }
 
         # Learning
         if hasattr(self.agent, "learning_store"):

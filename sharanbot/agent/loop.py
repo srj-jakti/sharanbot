@@ -174,7 +174,7 @@ class AgentLoop:
         self.autopilot.set_learning_store(self.learning_store)
 
         # Vault (encrypted credential store)
-        self.vault = Vault(workspace)
+        self.vault = Vault(workspace / "vault.json")
 
         # Service manager (autonomous apps, monitors, agents)
         self.service_manager = ServiceManager(workspace)

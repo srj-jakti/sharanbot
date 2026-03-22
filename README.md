@@ -27,6 +27,9 @@ Built for builders who want an AI that acts like a **demon boss**: fierce, relen
 | **Adaptability** | Static behavior | Self-learning + adaptive cooldowns |
 | **Reliability** | Hope it works | Circuit breakers + 5-level retry |
 | **Evolution** | Redeploy to update | Hot-reload everything at runtime |
+| **Memory** | Forgets everything | Cross-session superhuman memory |
+| **Credentials** | Plaintext config | Encrypted vault (PBKDF2 + Fernet) |
+| **Monitoring** | Check logs manually | Real-time dashboard with WebSocket |
 
 ## Core Powers
 
@@ -49,11 +52,44 @@ The **LearningStore** remembers every error and every fix. Patterns are persiste
 - Adaptive cooldowns via exponential moving average
 - Cross-session persistence (survives restarts)
 
-### ⚡ Autopilot Routing
-Automatically classifies task complexity and routes to the optimal strategy:
-- **Simple** → Direct LLM response
-- **Moderate** → Background subagent
-- **Complex** → Full team orchestration with DAG pipeline
+### 🚀 Proactive Autopilot
+Goes beyond reactive routing — the autopilot **anticipates** what you need:
+- **Superhuman memory**: Cross-session user profiling (tracks your tasks, preferred strategies, peak hours, complexity trends)
+- **Pattern caching**: Instant re-routing for similar tasks without LLM call
+- **Memory-driven decisions**: Injects accumulated intelligence into routing analysis
+- **Proactive suggestions**: Recommends next actions based on your workflow patterns
+- **Learning-store-aware**: Avoids strategies that previously failed
+- Routes to **direct** (simple) → **subagent** (moderate) → **full team** (complex)
+
+### 🔐 Encrypted Vault
+Secure credential storage for API keys, tokens, and passwords:
+- **PBKDF2** key derivation (480K iterations + SHA-256)
+- **Fernet** symmetric encryption (AES-128-CBC + HMAC)
+- Falls back to XOR obfuscation if `cryptography` isn't installed
+- Master-password locked — credentials encrypted at rest
+- Slash-path keys: `provider/openrouter/apiKey` → nested config overlay
+- Persistent `vault.json` with encrypted entries
+
+### 🖥️ Real-Time Dashboard
+Live web dashboard showing everything SharanBot is doing:
+- **6 tabs**: Overview, Services, Teams, Health, Vault, Logs
+- **WebSocket**: Auto-reconnecting real-time updates every 3 seconds
+- **Service monitoring**: Running apps, monitors, agents with status badges
+- **Team tracking**: Active teams with task progress (completed/total)
+- **Health view**: Circuit breaker visualization (green=closed, red=open)
+- **Learning summary**: Patterns learned, successful fixes by category
+- **Vault keys**: Listed with masked values
+- **Activity log**: Live timestamp-tagged events
+- Dark-themed SPA at `http://127.0.0.1:18791`
+
+### ⚙️ Autonomous Service Manager
+Run and monitor long-lived services, deployed apps, and autonomous agents:
+- **Lifecycle management**: Register → Start → Running → Stop/Restart/Remove
+- **Auto-restart**: Dead processes detected and restarted (configurable max restarts)
+- **Health checks**: Periodic process monitoring with status tracking
+- **Log buffering**: 500-line circular buffer per service, accessible via API
+- **Persistence**: Service configs saved to `services.json`, restored on restart
+- Service kinds: `app` | `agent` | `monitor` | `cron` | `custom`
 
 ### 🌐 Browser & Sandbox
 - **Playwright** browser control: navigate, click, type, screenshot
@@ -73,6 +109,12 @@ Hot-reload at runtime without restart:
 git clone https://github.com/airajakathi/Sharanbot.git
 cd SharanBot
 pip install -e .
+
+# Optional: for encrypted vault
+pip install cryptography
+
+# Optional: for real-time dashboard
+pip install aiohttp
 ```
 
 ### 2. Configure
@@ -97,6 +139,11 @@ Edit `~/.sharanbot/config.json`:
       "model": "your-model-name",
       "provider": "custom"
     }
+  },
+  "dashboard": {
+    "enable": true,
+    "host": "127.0.0.1",
+    "port": 18791
   }
 }
 ```
@@ -108,6 +155,7 @@ Edit `~/.sharanbot/config.json`:
 sharanbot agent
 
 # Gateway mode (connects to Telegram, Discord, etc.)
+# Also starts the real-time dashboard at http://127.0.0.1:18791
 sharanbot gateway
 ```
 
@@ -166,12 +214,16 @@ SharanBot
 ├── Agent Loop ─────── LLM ↔ Tool execution cycle
 │   ├── RecoveryEngine ─ Circuit breakers + auto-recovery (8 categories)
 │   ├── LearningStore ── Persistent error memory + adaptive cooldowns
+│   ├── Autopilot ────── Proactive routing + superhuman memory
 │   └── Context ──────── System prompt + memory consolidation
 ├── Team Orchestrator ─ DAG-based multi-agent execution
 │   ├── 26 Agent Profiles (architect, frontend, backend, tester...)
 │   ├── Task Planner ──── LLM-powered decomposition
 │   ├── Quality Gates ─── Output validation
 │   └── Auto-Recovery ─── Task retry on failure
+├── Vault ─────────── Encrypted credential store (PBKDF2 + Fernet)
+├── Service Manager ── Autonomous service lifecycle + health checks
+├── Dashboard ─────── Real-time web UI (aiohttp + WebSocket)
 ├── Tools ─────────── Filesystem, Shell, Web, Browser, Sandbox, MCP
 ├── Workers ───────── GSD-2 background processes with health checks
 ├── Subagents ─────── Background task execution (3 nesting levels)
@@ -179,6 +231,38 @@ SharanBot
 ├── Channels ──────── 11 chat platforms
 └── Self-Evolution ── Hot-reload everything at runtime
 ```
+
+## Dashboard
+
+The real-time dashboard runs alongside the gateway at `http://127.0.0.1:18791`:
+
+```
+┌──────────────────────────────────────────────────┐
+│  🔥 SharanBot Dashboard                         │
+│  ┌──────┬──────┬──────┬──────┐                   │
+│  │ 3    │ 2    │ 5    │ 47   │                   │
+│  │ Svcs │Teams │ Cron │Learn │                   │
+│  └──────┴──────┴──────┴──────┘                   │
+│                                                   │
+│  Services   │ Status │ PID  │ Uptime             │
+│  ──────────────────────────────                   │
+│  my-app     │ 🟢     │ 1234 │ 2h 15m             │
+│  monitor    │ 🟢     │ 5678 │ 1h 30m             │
+│  worker-1   │ 🔴     │ —    │ stopped            │
+│                                                   │
+│  Circuit Breakers: 🟢 LLM  🟢 MCP  🟢 Tools    │
+└──────────────────────────────────────────────────┘
+```
+
+Dashboard API endpoints:
+- `GET /api/status` — Full system snapshot
+- `GET /api/services` — Service manager status
+- `GET /api/teams` — Active team orchestrations
+- `GET /api/workers` — Worker manager status
+- `GET /api/cron` — Scheduled cron jobs
+- `GET /api/health` — Recovery engine + circuit breakers
+- `GET /api/vault/keys` — Vault credential keys (no values)
+- `WS /ws` — Real-time WebSocket updates (3s interval)
 
 ## MCP (Model Context Protocol)
 
@@ -204,7 +288,7 @@ SharanBot supports MCP for extended tool capabilities:
 ```bash
 docker build -t sharanbot .
 docker run -v ~/.sharanbot:/root/.sharanbot --rm sharanbot onboard
-docker run -v ~/.sharanbot:/root/.sharanbot -p 18790:18790 sharanbot gateway
+docker run -v ~/.sharanbot:/root/.sharanbot -p 18790:18790 -p 18791:18791 sharanbot gateway
 ```
 
 Docker Compose:
@@ -230,7 +314,7 @@ sharanbot/
 │   │   ├── dag.py         # Task dependency graph
 │   │   ├── planner.py     # LLM-powered decomposition
 │   │   ├── quality.py     # Quality gates
-│   │   └── autopilot.py   # Complexity routing
+│   │   └── autopilot.py   # Proactive routing + superhuman memory
 │   └── tools/             # Built-in tools
 │       ├── filesystem.py  # Read/write/edit/list
 │       ├── shell.py       # Command execution
@@ -238,9 +322,12 @@ sharanbot/
 │       ├── browser.py     # Playwright control
 │       ├── sandbox.py     # Docker sandbox
 │       └── mcp.py         # MCP integration
+├── vault/                 # Encrypted credential store
+├── services/              # Autonomous service manager
+├── dashboard/             # Real-time web UI + WebSocket
 ├── providers/             # 20+ LLM providers
 ├── channels/              # 11 chat platforms
-├── config/                # Config + hot-reload
+├── config/                # Config + hot-reload + dashboard config
 └── cli/                   # CLI commands
 ```
 
