@@ -18,6 +18,7 @@ class PipelineRegistry:
         self._templates["dev_qa"] = self._dev_qa_pipeline
         self._templates["full_stack"] = self._full_stack_pipeline
         self._templates["visual_qa"] = self._visual_qa_pipeline
+        self._templates["dev_starter"] = self._dev_starter_pipeline
 
     def get(self, name: str, task: str = "") -> TaskDAG | None:
         """Get a pipeline template by name, parameterized with the task."""
@@ -209,5 +210,56 @@ class PipelineRegistry:
             description=f"Fix any issues found during visual QA testing: {task}",
             agent_profile="coder",
             depends_on=["visual_test"],
+        ))
+        return dag
+
+    @staticmethod
+    def _dev_starter_pipeline(task: str) -> TaskDAG:
+        """Fast parallel project startup: Install deps + Start backend + Start frontend → Verify."""
+        dag = TaskDAG()
+        dag.add_task(TaskNode(
+            id="install_deps",
+            description=(
+                f"Install ALL project dependencies as fast as possible. "
+                f"Check for package.json (run npm install), requirements.txt "
+                f"(run pip install -r requirements.txt), or any other dependency "
+                f"files. Install everything needed in one shot. Project: {task}"
+            ),
+            agent_profile="devops",
+            max_retries=2,
+        ))
+        dag.add_task(TaskNode(
+            id="start_backend",
+            description=(
+                f"Start the backend/API server locally. Look for manage.py "
+                f"(Django), app.py/main.py (Flask/FastAPI), server.js, etc. "
+                f"Start it on an available port. If no separate backend exists, "
+                f"mark as complete and report 'no separate backend'. Project: {task}"
+            ),
+            agent_profile="devops",
+            depends_on=["install_deps"],
+        ))
+        dag.add_task(TaskNode(
+            id="start_frontend",
+            description=(
+                f"Start the frontend dev server locally. Look for package.json "
+                f"scripts (npm start, npm run dev, npx expo start --web, npx "
+                f"vite). Start it on an available port. Use --no-interactive or "
+                f"CI=1 to avoid prompts. Report the URL. Project: {task}"
+            ),
+            agent_profile="devops",
+            depends_on=["install_deps"],
+        ))
+        dag.add_task(TaskNode(
+            id="verify_preview",
+            description=(
+                f"Use the browser tool to navigate to the running application "
+                f"URL(s) reported by the backend and frontend tasks. Take a "
+                f"screenshot. Verify the app loaded correctly. Report the "
+                f"preview URL(s) to the user. Project: {task}"
+            ),
+            agent_profile="e2e_tester",
+            depends_on=["start_backend", "start_frontend"],
+            quality_gate=True,
         ))
         return dag

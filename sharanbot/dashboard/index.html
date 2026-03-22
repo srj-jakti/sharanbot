@@ -240,6 +240,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="stat-card"><div class="value" id="mcpCount">0</div><div class="label">MCP Servers</div></div>
       <div class="stat-card"><div class="value" id="toolCount">0</div><div class="label">Tools</div></div>
       <div class="stat-card"><div class="value" id="skillCount">0</div><div class="label">Skills</div></div>
+      <div class="stat-card"><div class="value" id="profileCount">0</div><div class="label">Agent Profiles</div></div>
+      <div class="stat-card"><div class="value" id="pipelineCount">0</div><div class="label">Pipelines</div></div>
+      <div class="stat-card"><div class="value" id="pluginCount">0</div><div class="label">Plugins</div></div>
     </div>
     <div class="panel">
       <h2><span class="icon">&#9670;</span> MCP Servers</h2>
@@ -252,6 +255,18 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="panel">
       <h2><span class="icon">&#10070;</span> Loaded Skills</h2>
       <div id="skillList" class="integ-grid"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#9632;</span> Agent Profiles</h2>
+      <div id="profileList" class="integ-grid"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#9654;</span> Pipelines</h2>
+      <div id="pipelineList" class="integ-grid"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#9733;</span> Plugins</h2>
+      <div id="pluginList" class="integ-grid"><div class="empty">Loading...</div></div>
     </div>
   </div>
 
@@ -654,6 +669,54 @@ function renderIntegrations(data) {
     `).join('');
   } else {
     skillEl.innerHTML = '<div class="empty">No skills loaded</div>';
+  }
+
+  // Agent Profiles
+  const profileEl = $('#profileList');
+  const profiles = data.profiles || [];
+  $('#profileCount').textContent = profiles.length;
+  if (profiles.length) {
+    profileEl.innerHTML = profiles.map(p => `
+      <div class="integ-item">
+        <span class="dot" style="background:var(--ok)"></span>
+        <span class="iname">${esc(p.display || p.name)}</span>
+        <span class="itag">${esc(p.name)}</span>
+      </div>
+    `).join('');
+  } else {
+    profileEl.innerHTML = '<div class="empty">No agent profiles loaded</div>';
+  }
+
+  // Pipelines
+  const pipelineEl = $('#pipelineList');
+  const pipelines = data.pipelines || [];
+  $('#pipelineCount').textContent = pipelines.length;
+  if (pipelines.length) {
+    pipelineEl.innerHTML = pipelines.map(p => `
+      <div class="integ-item">
+        <span class="dot" style="background:var(--warn)"></span>
+        <span class="iname">${esc(p)}</span>
+        <span class="itag">pipeline</span>
+      </div>
+    `).join('');
+  } else {
+    pipelineEl.innerHTML = '<div class="empty">No pipelines registered</div>';
+  }
+
+  // Plugins
+  const pluginEl = $('#pluginList');
+  const plugins = data.plugins || [];
+  $('#pluginCount').textContent = plugins.length;
+  if (plugins.length) {
+    pluginEl.innerHTML = plugins.map(p => `
+      <div class="integ-item">
+        <span class="dot" style="background:var(--accent)"></span>
+        <span class="iname">${esc(p.name)}</span>
+        <span class="itag">${(p.files || []).length} files</span>
+      </div>
+    `).join('');
+  } else {
+    pluginEl.innerHTML = '<div class="empty">No plugins installed</div>';
   }
 }
 

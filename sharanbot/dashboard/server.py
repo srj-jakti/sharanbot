@@ -237,6 +237,9 @@ class DashboardServer:
             "mcp_connected": False,
             "tools": [],
             "skills": [],
+            "plugins": [],
+            "pipelines": [],
+            "profiles": [],
         }
         if not self.agent:
             return web.json_response(data)
@@ -260,6 +263,34 @@ class DashboardServer:
                 data["skills"] = [{"name": s["name"], "source": s.get("source", "builtin")} for s in skills]
             except Exception:
                 pass
+
+        # Agent profiles (plugins/agents/*.yaml)
+        if hasattr(self.agent, "profile_registry"):
+            try:
+                for p in self.agent.profile_registry.list_profiles():
+                    data["profiles"].append({"name": p.name, "display": p.display_name})
+            except Exception:
+                pass
+
+        # Pipelines
+        if hasattr(self.agent, "team_orchestrator") and hasattr(self.agent.team_orchestrator, "pipelines"):
+            try:
+                data["pipelines"] = self.agent.team_orchestrator.pipelines.list_templates()
+            except Exception:
+                pass
+
+        # Plugins (scan plugins dir)
+        plugins_dir = getattr(self.agent, "workspace", None)
+        if plugins_dir:
+            pdir = plugins_dir / "plugins"
+            if pdir.is_dir():
+                try:
+                    for entry in sorted(pdir.iterdir()):
+                        if entry.is_dir() and not entry.name.startswith("."):
+                            plugin_files = [f.name for f in entry.iterdir() if f.is_file()]
+                            data["plugins"].append({"name": entry.name, "files": plugin_files})
+                except OSError:
+                    pass
 
         return web.json_response(data)
 
