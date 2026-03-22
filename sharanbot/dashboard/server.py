@@ -5,6 +5,8 @@ Provides a real-time web dashboard for SharanBot showing:
 - Autonomous services and deployed apps
 - Cron jobs and heartbeat status
 - System health and recovery engine status
+- Workspace projects with one-click run
+- MCP servers, tools, and skills status
 - Live log streaming via WebSocket
 """
 
@@ -12,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -58,6 +61,11 @@ class DashboardServer:
         self._app.router.add_get("/api/cron", self._handle_cron)
         self._app.router.add_get("/api/health", self._handle_health)
         self._app.router.add_get("/api/vault/keys", self._handle_vault_keys)
+        self._app.router.add_get("/api/projects", self._handle_projects)
+        self._app.router.add_get("/api/projects/{name}/files", self._handle_project_files)
+        self._app.router.add_get("/api/projects/{name}/file", self._handle_project_file_content)
+        self._app.router.add_post("/api/projects/{name}/run", self._handle_project_run)
+        self._app.router.add_get("/api/integrations", self._handle_integrations)
         self._app.router.add_get("/ws", self._handle_websocket)
 
         self._runner = web.AppRunner(self._app)
@@ -135,6 +143,224 @@ class DashboardServer:
         if hasattr(self.agent, "vault") and self.agent.vault:
             return web.json_response({"keys": self.agent.vault.list_keys()})
         return web.json_response({"keys": []})
+
+    async def _handle_projects(self, request: Any) -> Any:
+        """List workspace projects (directories with package.json, requirements.txt, etc.)."""
+        projects = self._scan_projects()
+        return web.json_response({"projects": projects})
+
+    async def _handle_project_files(self, request: Any) -> Any:
+        """List files in a project directory (non-recursive, top-level)."""
+        name = request.match_info["name"]
+        project_dir = self._resolve_project(name)
+        if not project_dir:
+            return web.json_response({"error": "Project not found"}, status=404)
+
+        files = []
+        try:
+            for entry in sorted(project_dir.iterdir()):
+                if entry.name.startswith("."):
+                    continue
+                if entry.name == "node_modules":
+                    continue
+                files.append({
+                    "name": entry.name,
+                    "type": "dir" if entry.is_dir() else "file",
+                    "size": entry.stat().st_size if entry.is_file() else 0,
+                })
+        except OSError:
+            pass
+        return web.json_response({"project": name, "files": files})
+
+    async def _handle_project_file_content(self, request: Any) -> Any:
+        """Read a specific file's content from a project."""
+        name = request.match_info["name"]
+        file_path = request.query.get("path", "")
+        project_dir = self._resolve_project(name)
+        if not project_dir:
+            return web.json_response({"error": "Project not found"}, status=404)
+
+        target = (project_dir / file_path).resolve()
+        # Path traversal protection
+        if not str(target).startswith(str(project_dir.resolve())):
+            return web.json_response({"error": "Access denied"}, status=403)
+        if not target.is_file():
+            return web.json_response({"error": "File not found"}, status=404)
+
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+            # Truncate very large files
+            if len(content) > 50_000:
+                content = content[:50_000] + "\n\n... (truncated)"
+            return web.json_response({"path": file_path, "content": content})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_project_run(self, request: Any) -> Any:
+        """Start a project (npm start, python main.py, etc.)."""
+        name = request.match_info["name"]
+        project_dir = self._resolve_project(name)
+        if not project_dir:
+            return web.json_response({"error": "Project not found"}, status=404)
+
+        ptype = self._detect_project_type(project_dir)
+        run_cmd = self._get_run_command(project_dir, ptype)
+        if not run_cmd:
+            return web.json_response({"error": "Cannot determine run command"}, status=400)
+
+        # Register with service manager if available
+        if hasattr(self.agent, "service_manager"):
+            svc_name = f"project-{name}"
+            try:
+                self.agent.service_manager.register(
+                    name=svc_name,
+                    command=run_cmd,
+                    working_dir=str(project_dir),
+                    kind="app",
+                )
+                await self.agent.service_manager.start(svc_name)
+                return web.json_response({
+                    "status": "started",
+                    "service": svc_name,
+                    "command": run_cmd,
+                    "type": ptype,
+                })
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+
+        return web.json_response({"error": "Service manager not available"}, status=500)
+
+    async def _handle_integrations(self, request: Any) -> Any:
+        """Return connected MCP servers, registered tools, and loaded skills."""
+        data: dict[str, Any] = {
+            "mcp_servers": [],
+            "mcp_connected": False,
+            "tools": [],
+            "skills": [],
+        }
+        if not self.agent:
+            return web.json_response(data)
+
+        # MCP servers
+        if hasattr(self.agent, "_mcp_servers"):
+            for name in self.agent._mcp_servers:
+                data["mcp_servers"].append({"name": name, "connected": self.agent._mcp_connected})
+            data["mcp_connected"] = self.agent._mcp_connected
+
+        # Tools (group by type)
+        if hasattr(self.agent, "tools"):
+            for tname in self.agent.tools.tool_names:
+                category = "mcp" if tname.startswith("mcp_") else "builtin"
+                data["tools"].append({"name": tname, "category": category})
+
+        # Skills
+        if hasattr(self.agent, "context") and hasattr(self.agent.context, "skills"):
+            try:
+                skills = self.agent.context.skills.list_skills(filter_unavailable=False)
+                data["skills"] = [{"name": s["name"], "source": s.get("source", "builtin")} for s in skills]
+            except Exception:
+                pass
+
+        return web.json_response(data)
+
+    # ------------------------------------------------------------------
+    # Project helpers
+    # ------------------------------------------------------------------
+
+    def _scan_projects(self) -> list[dict[str, Any]]:
+        """Scan workspace for project directories."""
+        projects = []
+        if not self.agent or not hasattr(self.agent, "workspace"):
+            return projects
+
+        workspace = self.agent.workspace
+        if not workspace.is_dir():
+            return projects
+
+        for entry in sorted(workspace.iterdir()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if entry.name in ("memory", "plugins", "skills", "__pycache__"):
+                continue
+
+            ptype = self._detect_project_type(entry)
+            if ptype == "unknown":
+                continue
+
+            file_count = sum(1 for f in entry.rglob("*") if f.is_file() and "node_modules" not in f.parts and ".git" not in f.parts)
+
+            projects.append({
+                "name": entry.name,
+                "type": ptype,
+                "path": str(entry),
+                "files": min(file_count, 9999),
+            })
+
+        return projects
+
+    def _resolve_project(self, name: str) -> Path | None:
+        """Resolve a project name to its directory path, with path traversal protection."""
+        if not self.agent or not hasattr(self.agent, "workspace"):
+            return None
+        # Block path traversal
+        if ".." in name or "/" in name or "\\" in name:
+            return None
+        project_dir = self.agent.workspace / name
+        if project_dir.is_dir() and str(project_dir.resolve()).startswith(str(self.agent.workspace.resolve())):
+            return project_dir
+        return None
+
+    @staticmethod
+    def _detect_project_type(path: Path) -> str:
+        """Detect the type of project from its files."""
+        if (path / "package.json").exists():
+            pkg = {}
+            try:
+                pkg = json.loads((path / "package.json").read_text(encoding="utf-8"))
+            except Exception:
+                pass
+            deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+            if "expo" in deps:
+                return "expo"
+            if "next" in deps:
+                return "next"
+            if "vite" in deps:
+                return "vite"
+            if "react-scripts" in deps:
+                return "cra"
+            return "node"
+        if (path / "requirements.txt").exists() or (path / "pyproject.toml").exists():
+            if (path / "manage.py").exists():
+                return "django"
+            if any((path / f).exists() for f in ("main.py", "app.py", "server.py")):
+                return "python"
+            return "python"
+        if (path / "Cargo.toml").exists():
+            return "rust"
+        if (path / "go.mod").exists():
+            return "go"
+        return "unknown"
+
+    @staticmethod
+    def _get_run_command(path: Path, ptype: str) -> str | None:
+        """Get the appropriate run command for a project type."""
+        commands = {
+            "expo": "npx expo start --web --port 19006",
+            "next": "npx next dev --port 3000",
+            "vite": "npx vite --port 5173",
+            "cra": "npx react-scripts start",
+            "node": "npm start",
+            "django": "python manage.py runserver 0.0.0.0:8000",
+            "python": None,  # determined below
+            "rust": "cargo run",
+            "go": "go run .",
+        }
+        cmd = commands.get(ptype)
+        if ptype == "python":
+            for entry in ("main.py", "app.py", "server.py"):
+                if (path / entry).exists():
+                    return f"python {entry}"
+        return cmd
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -254,5 +480,22 @@ class DashboardServer:
         # Learning
         if hasattr(self.agent, "learning_store"):
             snapshot["learning_summary"] = self.agent.learning_store.summary()
+
+        # Projects
+        snapshot["projects"] = self._scan_projects()
+
+        # Integrations
+        integrations: dict[str, Any] = {"mcp_servers": [], "mcp_connected": False, "tools": 0, "skills": 0}
+        if hasattr(self.agent, "_mcp_servers"):
+            integrations["mcp_servers"] = list(self.agent._mcp_servers.keys())
+            integrations["mcp_connected"] = self.agent._mcp_connected
+        if hasattr(self.agent, "tools"):
+            integrations["tools"] = len(self.agent.tools.tool_names)
+        if hasattr(self.agent, "context") and hasattr(self.agent.context, "skills"):
+            try:
+                integrations["skills"] = len(self.agent.context.skills.list_skills(filter_unavailable=False))
+            except Exception:
+                pass
+        snapshot["integrations"] = integrations
 
         return snapshot

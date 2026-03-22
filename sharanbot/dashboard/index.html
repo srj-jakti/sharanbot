@@ -93,6 +93,40 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .ws-status{font-size:10px;padding:4px 10px;border-radius:4px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
 .ws-status.connected{background:rgba(90,154,106,.12);color:var(--ok)}
 .ws-status.disconnected{background:rgba(160,72,72,.1);color:var(--err)}
+
+/* Project cards */
+.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.project-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px 16px;cursor:pointer;transition:border-color .2s}
+.project-card:hover{border-color:var(--accent)}
+.project-card .pname{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px}
+.project-card .ptype{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+.project-card .pfiles{font-size:11px;color:var(--dim);margin-top:8px}
+.project-card .pactions{margin-top:12px;display:flex;gap:8px}
+.btn-sm{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:4px;font-size:11px;cursor:pointer;transition:border-color .2s}
+.btn-sm:hover{border-color:var(--accent)}
+.btn-sm.primary{background:rgba(90,154,106,.15);border-color:rgba(90,154,106,.3);color:var(--ok)}
+
+/* File browser */
+.file-browser{display:flex;gap:14px;min-height:400px}
+.file-tree{width:240px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:500px;overflow-y:auto}
+.file-tree-item{padding:5px 8px;font-size:12px;color:var(--dim);cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:6px}
+.file-tree-item:hover{background:var(--card);color:var(--text)}
+.file-tree-item.active{background:var(--card);color:var(--text);border-left:2px solid var(--accent)}
+.file-tree-item .ficon{font-size:11px;opacity:.6}
+.code-viewer{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.code-viewer-header{padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);font-size:11px;color:var(--dim)}
+.code-viewer-content{padding:14px;font-family:'Cascadia Code','Fira Code','SF Mono',monospace;font-size:12px;line-height:1.7;color:var(--text);white-space:pre-wrap;overflow-y:auto;max-height:460px;tab-size:2}
+
+/* Integration items */
+.integ-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.integ-item{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;display:flex;align-items:center;gap:8px}
+.integ-item .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.integ-item .iname{color:var(--text)}
+.integ-item .itag{color:var(--dim);font-size:10px;margin-left:auto;text-transform:uppercase;letter-spacing:.5px}
+
+/* Back button */
+.back-btn{background:none;border:1px solid var(--border);color:var(--dim);padding:6px 14px;border-radius:4px;font-size:11px;cursor:pointer;margin-bottom:14px;transition:color .2s}
+.back-btn:hover{color:var(--text);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -108,6 +142,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <button data-tab="teams">Teams</button>
   <button data-tab="health">Health</button>
   <button data-tab="vault">Vault</button>
+  <button data-tab="projects">Projects</button>
+  <button data-tab="integrations">Integrations</button>
   <button data-tab="logs">Logs</button>
 </div>
 <div class="main">
@@ -168,6 +204,54 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="panel">
       <h2><span class="icon">&#9670;</span> Encrypted Vault</h2>
       <div id="vaultKeys"><div class="empty">Vault not configured</div></div>
+    </div>
+  </div>
+
+  <!-- PROJECTS -->
+  <div class="section" id="tab-projects">
+    <div id="projectList">
+      <div class="panel">
+        <h2><span class="icon">&#9638;</span> Workspace Projects</h2>
+        <div id="projectGrid" class="project-grid"><div class="empty">Scanning projects...</div></div>
+      </div>
+    </div>
+    <div id="projectDetail" style="display:none">
+      <button class="back-btn" onclick="closeProjectDetail()">&larr; Back to Projects</button>
+      <div class="panel" style="margin-bottom:14px">
+        <h2><span class="icon">&#9638;</span> <span id="detailName"></span> <span id="detailType" class="badge pending" style="margin-left:8px"></span></h2>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-sm primary" id="detailRunBtn" onclick="runProject()">Run</button>
+        </div>
+        <div id="runOutput" style="margin-top:10px;display:none" class="log-box"></div>
+      </div>
+      <div class="file-browser">
+        <div class="file-tree" id="fileTree"></div>
+        <div class="code-viewer">
+          <div class="code-viewer-header" id="codeHeader">Select a file to view</div>
+          <div class="code-viewer-content" id="codeContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTEGRATIONS -->
+  <div class="section" id="tab-integrations">
+    <div class="grid" style="margin-bottom:24px">
+      <div class="stat-card"><div class="value" id="mcpCount">0</div><div class="label">MCP Servers</div></div>
+      <div class="stat-card"><div class="value" id="toolCount">0</div><div class="label">Tools</div></div>
+      <div class="stat-card"><div class="value" id="skillCount">0</div><div class="label">Skills</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#9670;</span> MCP Servers</h2>
+      <div id="mcpList" class="integ-grid"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#9881;</span> Registered Tools</h2>
+      <div id="toolList" class="integ-grid"><div class="empty">Loading...</div></div>
+    </div>
+    <div class="panel">
+      <h2><span class="icon">&#10070;</span> Loaded Skills</h2>
+      <div id="skillList" class="integ-grid"><div class="empty">Loading...</div></div>
     </div>
   </div>
 
@@ -258,6 +342,19 @@ function updateDashboard(data) {
   // Health
   if (data.health) {
     renderHealth(data.health);
+  }
+
+  // Projects
+  if (data.projects) {
+    cachedProjects = data.projects;
+    renderProjects(data.projects);
+  }
+
+  // Integrations (summary counts for overview)
+  if (data.integrations) {
+    $('#mcpCount').textContent = (data.integrations.mcp_servers || []).length;
+    $('#toolCount').textContent = data.integrations.tools || 0;
+    $('#skillCount').textContent = data.integrations.skills || 0;
   }
 }
 
@@ -373,8 +470,177 @@ async function loadVault() {
   } catch(e) {}
 }
 
+// ---- Projects ----
+let currentProject = null;
+
+function renderProjects(projects) {
+  const el = $('#projectGrid');
+  if (!projects || !projects.length) {
+    el.innerHTML = '<div class="empty">No projects found in workspace</div>';
+    return;
+  }
+  el.innerHTML = projects.map(p => `
+    <div class="project-card" onclick="openProject('${esc(p.name)}')">
+      <div class="pname">${esc(p.name)}</div>
+      <div class="ptype">${esc(p.type)}</div>
+      <div class="pfiles">${p.files} files</div>
+      <div class="pactions">
+        <button class="btn-sm" onclick="event.stopPropagation();openProject('${esc(p.name)}')">Browse</button>
+        <button class="btn-sm primary" onclick="event.stopPropagation();openAndRun('${esc(p.name)}')">Run</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openProject(name) {
+  currentProject = name;
+  $('#projectList').style.display = 'none';
+  $('#projectDetail').style.display = 'block';
+  $('#detailName').textContent = name;
+  $('#runOutput').style.display = 'none';
+  $('#codeContent').textContent = '';
+  $('#codeHeader').textContent = 'Select a file to view';
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(name)}/files`);
+    const data = await res.json();
+    const proj = (cachedProjects || []).find(p => p.name === name);
+    $('#detailType').textContent = proj ? proj.type : '';
+    renderFileTree(data.files || []);
+  } catch(e) {
+    $('#fileTree').innerHTML = '<div class="empty">Failed to load files</div>';
+  }
+}
+
+function closeProjectDetail() {
+  $('#projectList').style.display = 'block';
+  $('#projectDetail').style.display = 'none';
+  currentProject = null;
+}
+
+function renderFileTree(files) {
+  const el = $('#fileTree');
+  if (!files.length) {
+    el.innerHTML = '<div class="empty">No files</div>';
+    return;
+  }
+  const dirs = files.filter(f => f.type === 'dir');
+  const fls = files.filter(f => f.type === 'file');
+  el.innerHTML = [...dirs, ...fls].map(f => {
+    const icon = f.type === 'dir' ? '&#128193;' : '&#128196;';
+    const click = f.type === 'file' ? `onclick="viewFile('${esc(f.name)}')"`  : '';
+    return `<div class="file-tree-item" ${click}><span class="ficon">${icon}</span>${esc(f.name)}</div>`;
+  }).join('');
+}
+
+async function viewFile(fname) {
+  if (!currentProject) return;
+  $('#codeHeader').textContent = fname;
+  $('#codeContent').textContent = 'Loading...';
+  $$('#fileTree .file-tree-item').forEach(el => el.classList.remove('active'));
+  // find and activate
+  $$('#fileTree .file-tree-item').forEach(el => {
+    if (el.textContent.trim() === fname) el.classList.add('active');
+  });
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(currentProject)}/file?path=${encodeURIComponent(fname)}`);
+    const data = await res.json();
+    if (data.error) {
+      $('#codeContent').textContent = 'Error: ' + data.error;
+    } else {
+      $('#codeContent').textContent = data.content;
+    }
+  } catch(e) {
+    $('#codeContent').textContent = 'Failed to load file';
+  }
+}
+
+async function runProject() {
+  if (!currentProject) return;
+  const el = $('#runOutput');
+  el.style.display = 'block';
+  el.textContent = 'Starting project...';
+  try {
+    const res = await fetch(`/api/projects/${encodeURIComponent(currentProject)}/run`, {method:'POST'});
+    const data = await res.json();
+    if (data.error) {
+      el.textContent = 'Error: ' + data.error;
+    } else {
+      el.textContent = `Status: ${data.status}\nService: ${data.service}\nCommand: ${data.command}\nType: ${data.type}`;
+    }
+  } catch(e) {
+    el.textContent = 'Failed to start project';
+  }
+}
+
+function openAndRun(name) {
+  openProject(name).then(() => runProject());
+}
+
+let cachedProjects = [];
+
+// ---- Integrations ----
+async function loadIntegrations() {
+  try {
+    const res = await fetch('/api/integrations');
+    const data = await res.json();
+    renderIntegrations(data);
+  } catch(e) {}
+}
+
+function renderIntegrations(data) {
+  // MCP
+  const mcpEl = $('#mcpList');
+  $('#mcpCount').textContent = (data.mcp_servers || []).length;
+  if (data.mcp_servers && data.mcp_servers.length) {
+    mcpEl.innerHTML = data.mcp_servers.map(s => {
+      const connected = s.connected !== false;
+      return `<div class="integ-item">
+        <span class="dot" style="background:var(${connected ? '--ok' : '--err'})"></span>
+        <span class="iname">${esc(s.name)}</span>
+        <span class="itag">${connected ? 'Connected' : 'Disconnected'}</span>
+      </div>`;
+    }).join('');
+  } else {
+    mcpEl.innerHTML = '<div class="empty">No MCP servers configured</div>';
+  }
+
+  // Tools
+  const toolEl = $('#toolList');
+  const tools = data.tools || [];
+  $('#toolCount').textContent = tools.length;
+  if (tools.length) {
+    toolEl.innerHTML = tools.map(t => {
+      const isMcp = t.category === 'mcp';
+      return `<div class="integ-item">
+        <span class="dot" style="background:var(${isMcp ? '--warn' : '--ok'})"></span>
+        <span class="iname">${esc(t.name)}</span>
+        <span class="itag">${esc(t.category)}</span>
+      </div>`;
+    }).join('');
+  } else {
+    toolEl.innerHTML = '<div class="empty">No tools registered</div>';
+  }
+
+  // Skills
+  const skillEl = $('#skillList');
+  const skills = data.skills || [];
+  $('#skillCount').textContent = skills.length;
+  if (skills.length) {
+    skillEl.innerHTML = skills.map(s => `
+      <div class="integ-item">
+        <span class="dot" style="background:var(--accent)"></span>
+        <span class="iname">${esc(s.name)}</span>
+        <span class="itag">${esc(s.source)}</span>
+      </div>
+    `).join('');
+  } else {
+    skillEl.innerHTML = '<div class="empty">No skills loaded</div>';
+  }
+}
+
 connect();
 loadVault();
+loadIntegrations();
 </script>
 </body>
 </html>
