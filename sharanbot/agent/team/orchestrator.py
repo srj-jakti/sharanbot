@@ -47,6 +47,9 @@ class TeamOrchestrator:
     4. ``steer_team(team_id, instruction)`` → modify a running team
     """
 
+    # Per-task timeout in seconds — prevents hung subagents from blocking the team
+    DEFAULT_TASK_TIMEOUT = 300  # 5 minutes
+
     def __init__(
         self,
         provider: LLMProvider,
@@ -55,6 +58,7 @@ class TeamOrchestrator:
         subagent_manager: SubagentManager,
         message_bus: MessageBus,
         workspace,
+        task_timeout: int = DEFAULT_TASK_TIMEOUT,
     ):
         self.provider = provider
         self.model = model
@@ -62,6 +66,7 @@ class TeamOrchestrator:
         self.subagents = subagent_manager
         self.message_bus = message_bus
         self.workspace = workspace
+        self.task_timeout = task_timeout
 
         self.planner = TaskPlanner(provider, model, profile_registry)
         self.quality = QualityGate(provider, model)
@@ -165,14 +170,24 @@ class TeamOrchestrator:
 
         summary += session.tracer.get_summary()
 
-        # Collect all results
-        results = []
+        # Collect results categorized by status
+        succeeded = []
+        failed_list = []
+        skipped_list = []
         for tid in dag.topological_order():
             t = dag.tasks[tid]
-            if t.result:
-                results.append(f"[{tid}] {t.result[:300]}")
+            if t.status == "completed" and t.result:
+                succeeded.append(f"  [✓ {tid}] {t.result[:300]}")
+            elif t.status == "failed":
+                failed_list.append(f"  [✗ {tid}] {t.error or 'unknown error'}")
+            elif t.status == "skipped":
+                skipped_list.append(f"  [⏭ {tid}] {t.error or 'skipped'}")
 
-        summary += "\n\nResults:\n" + "\n".join(results)
+        summary += "\n\nCompleted:\n" + ("\n".join(succeeded) or "  (none)")
+        if failed_list:
+            summary += "\n\nFailed:\n" + "\n".join(failed_list)
+        if skipped_list:
+            summary += "\n\nSkipped:\n" + "\n".join(skipped_list)
 
         # Announce back to the user
         await self._announce(session, summary)
@@ -254,11 +269,14 @@ class TeamOrchestrator:
         full_task = "\n".join(context_parts)
 
         try:
-            # Use SubagentManager to run the task
-            result = await self._run_task_as_subagent(
-                task_description=full_task,
-                profile=task.agent_profile,
-                agent_id=agent_id,
+            # Use SubagentManager to run the task (with timeout to prevent hangs)
+            result = await asyncio.wait_for(
+                self._run_task_as_subagent(
+                    task_description=full_task,
+                    profile=task.agent_profile,
+                    agent_id=agent_id,
+                ),
+                timeout=self.task_timeout,
             )
 
             # Quality gate check if required
@@ -283,6 +301,12 @@ class TeamOrchestrator:
                 f"Task {task.id} completed",
                 {"task_id": task.id, "result": result[:2000]},
             )
+
+        except asyncio.TimeoutError:
+            error_msg = f"Task timed out after {self.task_timeout}s"
+            dag.mark_failed(task.id, error_msg)
+            tracer.trace_fail(agent_id, task.id, error_msg)
+            logger.error("Task {} timed out after {}s", task.id, self.task_timeout)
 
         except Exception as e:
             error_msg = str(e)
@@ -334,6 +358,18 @@ class TeamOrchestrator:
         ))
         tools.register(WebSearchTool(config=self.subagents.web_search_config, proxy=self.subagents.web_proxy))
         tools.register(WebFetchTool(proxy=self.subagents.web_proxy))
+
+        # Register browser and sandbox tools for richer team capabilities
+        try:
+            from sharanbot.agent.tools.browser import BrowserTool
+            tools.register(BrowserTool(screenshots_dir=self.workspace / ".sharanbot_screenshots"))
+        except Exception:
+            pass  # Playwright not installed — skip
+        try:
+            from sharanbot.agent.tools.sandbox import SandboxTool
+            tools.register(SandboxTool(workspace=self.workspace))
+        except Exception:
+            pass  # Docker not available — skip
 
         if agent_profile and agent_profile.denied_tools:
             for name in agent_profile.denied_tools:

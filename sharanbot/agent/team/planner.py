@@ -50,8 +50,12 @@ class TaskPlanner:
         self.model = model
         self.profile_registry = profile_registry
 
-    async def decompose(self, task: str) -> TaskDAG:
-        """Break a complex task into a DAG of subtasks using the LLM."""
+    async def decompose(self, task: str, max_attempts: int = 3) -> TaskDAG:
+        """Break a complex task into a DAG of subtasks using the LLM.
+
+        Retries up to *max_attempts* times when the generated plan has
+        invalid dependency references or circular dependencies.
+        """
         profiles_desc = self._format_profiles()
         prompt = _DECOMPOSE_PROMPT.format(profiles=profiles_desc, task=task)
 
@@ -60,15 +64,36 @@ class TaskPlanner:
             {"role": "user", "content": prompt},
         ]
 
-        response = await self.provider.chat_with_retry(
-            messages=messages,
-            model=self.model,
-        )
+        last_error = None
+        for attempt in range(max_attempts):
+            response = await self.provider.chat_with_retry(
+                messages=messages,
+                model=self.model,
+            )
 
-        plan = self._parse_plan(response.content or "[]")
-        dag = TaskDAG.from_plan(plan)
-        logger.info("Task decomposed into {} subtasks", len(dag.tasks))
-        return dag
+            plan = self._parse_plan(response.content or "[]")
+            try:
+                dag = TaskDAG.from_plan(plan)
+                logger.info("Task decomposed into {} subtasks (attempt {})", len(dag.tasks), attempt + 1)
+                return dag
+            except ValueError as exc:
+                last_error = str(exc)
+                logger.warning("Plan validation failed (attempt {}): {}", attempt + 1, last_error)
+                # Append error feedback and retry
+                messages.append({"role": "assistant", "content": response.content or ""})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"The plan has a problem: {last_error}. "
+                        "Please fix it and output a corrected JSON array."
+                    ),
+                })
+
+        # All retries exhausted — fall back to a single-task plan
+        logger.error("Plan decomposition failed after {} attempts: {}", max_attempts, last_error)
+        return TaskDAG.from_plan([
+            {"id": "task_1", "description": task, "profile": "general", "depends_on": []}
+        ])
 
     async def replan(self, dag: TaskDAG, failed_task_id: str, feedback: str) -> TaskDAG:
         """Adjust the plan after a task failure."""

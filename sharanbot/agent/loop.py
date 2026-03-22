@@ -274,6 +274,8 @@ class AgentLoop:
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()
+            except (RuntimeError, BaseExceptionGroup):
+                pass  # MCP SDK cancel scope cleanup is noisy but harmless
             except Exception:
                 pass
             self._mcp_stack = None

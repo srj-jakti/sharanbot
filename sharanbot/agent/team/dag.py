@@ -173,16 +173,48 @@ class TaskDAG:
 
     @classmethod
     def from_plan(cls, plan: list[dict]) -> "TaskDAG":
-        """Create a DAG from a list of task dicts (from LLM planner)."""
+        """Create a DAG from a list of task dicts (from LLM planner).
+
+        Raises ValueError if the plan contains invalid dependency references
+        or circular dependencies.
+        """
         dag = cls()
+        task_ids = {item["id"] for item in plan}
         for item in plan:
+            deps = item.get("depends_on", [])
+            # Strip invalid dependency references
+            valid_deps = [d for d in deps if d in task_ids]
             dag.add_task(TaskNode(
                 id=item["id"],
                 description=item.get("description", ""),
                 agent_profile=item.get("profile", "general"),
-                depends_on=item.get("depends_on", []),
+                depends_on=valid_deps,
                 quality_gate=item.get("quality_gate", False),
                 max_retries=item.get("max_retries", 3),
                 on_fail_goto=item.get("on_fail", None),
             ))
+        # Validate no circular dependencies
+        dag._check_cycles()
         return dag
+
+    def _check_cycles(self) -> None:
+        """Raise ValueError if the DAG contains a cycle."""
+        visited: set[str] = set()
+        in_stack: set[str] = set()
+
+        def dfs(tid: str) -> None:
+            if tid in in_stack:
+                raise ValueError(f"Circular dependency detected involving task '{tid}'")
+            if tid in visited:
+                return
+            in_stack.add(tid)
+            task = self.tasks.get(tid)
+            if task:
+                for dep in task.depends_on:
+                    if dep in self.tasks:
+                        dfs(dep)
+            in_stack.discard(tid)
+            visited.add(tid)
+
+        for tid in self.tasks:
+            dfs(tid)
