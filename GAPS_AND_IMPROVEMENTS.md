@@ -65,6 +65,52 @@
 
 ---
 
+## LIVE CHALLENGE TEST RESULTS (Round 2)
+
+### Challenge: 3D Car Racing Game (React Native/Expo)
+**Date:** 2026-03-22  
+**Test:** Build complete 3D racing game with research → code → bundling → QR code
+
+#### Round 1 (Before Fixes):
+- **Time:** 746.5s (12.4 min) — hit max iteration limit
+- **Iterations used:** 100/100 (hit limit, task incomplete)
+- **team_status polls:** ~70 out of 100 iterations (70% wasted)
+- **Result:** Files created but task marked incomplete
+
+#### Round 2 (After Fixes):
+- **Time:** 336.9s (5.6 min) — completed successfully
+- **Iterations used:** ~11 tool calls total
+- **team_status polls:** 0 (agent built directly)
+- **Result:** ✅ Complete project with 15 files, summary, instructions
+
+#### Gaps Found & Fixed:
+
+### 10. Team Status Polling Loop Wastes Iterations (CRITICAL — FIXED)
+- **File:** `sharanbot/agent/team/tools.py` → `TeamStatusTool`
+- **Problem:** Agent called `team_status` ~70 times in a tight loop (~2s intervals), wasting 70% of its iteration budget on busy-polling.
+- **Fix:** Added adaptive backoff sleep (15s→30s) when team is still running. Response includes anti-polling hint. Tool description warns against tight-loop polling.
+- **Commit:** `95a4a75`
+
+### 11. Max Tool Iterations Too Low for Complex Tasks (CRITICAL — FIXED)
+- **Files:** `sharanbot/config/schema.py`, user's `config.json`
+- **Problem:** Default 40 iterations (user had 100) insufficient for complex multi-phase tasks with team orchestration + file creation.
+- **Fix:** Increased default from 40 to 200. Updated user config to 200.
+- **Commit:** `95a4a75`
+
+### 12. Team Task Timeout Too Short (MEDIUM — FIXED)
+- **File:** `sharanbot/agent/team/orchestrator.py`
+- **Problem:** Default 300s (5min) timeout caused complex LLM-driven subtasks (design/research) to fail.
+- **Fix:** Increased default from 300s to 600s (10min).
+- **Commit:** `95a4a75`
+
+### 13. TeamCreateTool Missing Anti-Polling Guidance (LOW — FIXED)
+- **File:** `sharanbot/agent/team/tools.py` → `TeamCreateTool.execute()`
+- **Problem:** team_create response didn't warn the agent to avoid excessive status polling.
+- **Fix:** Added guidance message: "Do NOT poll team_status in a loop. Work on other aspects instead."
+- **Commit:** `95a4a75`
+
+---
+
 ## POTENTIAL IMPROVEMENTS
 
 ### A. Streaming Responses for Telegram
