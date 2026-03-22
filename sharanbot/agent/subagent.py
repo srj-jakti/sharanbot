@@ -138,8 +138,11 @@ class SubagentManager:
 
             # Browser and sandbox tools for team members (testing, visual verification)
             from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
+            from sharanbot.agent.tools.wingman import WingmanTaskTool, WingmanChatTool
             from sharanbot.agent.tools.sandbox import SandboxTool
             tools.register(TandemBrowserTool(screenshots_dir=self.workspace / "screenshots"))
+            tools.register(WingmanTaskTool())
+            tools.register(WingmanChatTool())
             tools.register(SandboxTool(workspace=self.workspace))
 
             # Allow nested spawning if depth allows

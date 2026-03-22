@@ -52,13 +52,13 @@ class TandemBrowserTool(Tool):
     def description(self) -> str:
         return (
             "Control Tandem Browser for visual web interaction. "
-            "Actions: navigate (go to URL), screenshot (capture page), "
-            "click (click element by selector), type (fill input field), "
-            "get_text (extract visible text), evaluate (run JS), "
-            "wait (wait for selector), scroll (scroll page), close (close tab). "
-            "Use this to test web applications, verify UI, fill forms, "
-            "and visually inspect rendered pages.  Backed by Tandem Browser "
-            "(persistent Electron browser with security controls)."
+            "Actions: navigate, screenshot, click, type, get_text, evaluate, "
+            "wait, scroll, close, snapshot (accessibility tree with @eN refs), "
+            "find (semantic element search), open_tab, close_tab, list_tabs, focus_tab, "
+            "devtools_console, devtools_network, devtools_dom, extract_content, "
+            "search_history, search_bookmarks, network_apis. "
+            "Backed by Tandem Browser (persistent Electron with 8-layer security, "
+            "DevTools bridge, semantic locators, and network inspection)."
         )
 
     @property
@@ -69,38 +69,61 @@ class TandemBrowserTool(Tool):
                 "action": {
                     "type": "string",
                     "description": (
-                        "Browser action to perform: navigate, screenshot, click, "
-                        "type, get_text, evaluate, wait, scroll, close"
+                        "Browser action: navigate, screenshot, click, type, "
+                        "get_text, evaluate, wait, scroll, close, "
+                        "snapshot, find, find_click, find_fill, "
+                        "open_tab, close_tab, list_tabs, focus_tab, "
+                        "devtools_console, devtools_network, devtools_dom, devtools_performance, "
+                        "extract_content, search_history, search_bookmarks, network_apis, status"
                     ),
                     "enum": [
                         "navigate", "screenshot", "click", "type",
                         "get_text", "evaluate", "wait", "scroll", "close",
+                        "snapshot", "find", "find_click", "find_fill",
+                        "open_tab", "close_tab", "list_tabs", "focus_tab",
+                        "devtools_console", "devtools_network", "devtools_dom",
+                        "devtools_performance",
+                        "extract_content", "search_history", "search_bookmarks",
+                        "network_apis", "status",
                     ],
                 },
                 "url": {
                     "type": "string",
-                    "description": "URL to navigate to (for 'navigate' action)",
+                    "description": "URL to navigate to (navigate, open_tab)",
                 },
                 "selector": {
                     "type": "string",
-                    "description": "CSS selector for element interaction (click, type, wait)",
+                    "description": "CSS selector or @eN ref for interaction (click, type, wait, find_click, find_fill, devtools_dom)",
                 },
                 "text": {
                     "type": "string",
-                    "description": "Text to type into an input field (for 'type' action)",
+                    "description": "Text to type or search query (type, find, find_click, find_fill, search_history, search_bookmarks)",
                 },
                 "script": {
                     "type": "string",
-                    "description": "JavaScript code to evaluate in the browser (for 'evaluate' action)",
+                    "description": "JavaScript code to evaluate (evaluate action)",
                 },
                 "direction": {
                     "type": "string",
-                    "description": "Scroll direction: up or down (for 'scroll' action)",
+                    "description": "Scroll direction: up or down",
                     "enum": ["up", "down"],
                 },
                 "full_page": {
                     "type": "boolean",
-                    "description": "Whether to capture full page screenshot (default: false)",
+                    "description": "Capture full page screenshot (default: false)",
+                },
+                "tab_id": {
+                    "type": "string",
+                    "description": "Tab ID (close_tab, focus_tab)",
+                },
+                "by": {
+                    "type": "string",
+                    "description": "Locator strategy for find actions: text, role, label, placeholder",
+                    "enum": ["text", "role", "label", "placeholder"],
+                },
+                "level": {
+                    "type": "string",
+                    "description": "Console log level filter (devtools_console): all, error, warning, info",
                 },
             },
             "required": ["action"],
@@ -188,6 +211,27 @@ class TandemBrowserTool(Tool):
             "wait": self._wait,
             "scroll": self._scroll,
             "close": self._close,
+            # Snapshot / Semantic locators
+            "snapshot": self._snapshot,
+            "find": self._find,
+            "find_click": self._find_click,
+            "find_fill": self._find_fill,
+            # Tab management
+            "open_tab": self._open_tab,
+            "close_tab": self._close_tab_by_id,
+            "list_tabs": self._list_tabs,
+            "focus_tab": self._focus_tab,
+            # DevTools bridge
+            "devtools_console": self._devtools_console,
+            "devtools_network": self._devtools_network,
+            "devtools_dom": self._devtools_dom,
+            "devtools_performance": self._devtools_performance,
+            # Content & data
+            "extract_content": self._extract_content,
+            "search_history": self._search_history,
+            "search_bookmarks": self._search_bookmarks,
+            "network_apis": self._network_apis,
+            "status": self._status,
         }
 
         handler = dispatch.get(action)
@@ -293,13 +337,261 @@ class TandemBrowserTool(Tool):
     def _close(self, **_: Any) -> str:
         """Close the active tab (not the whole browser)."""
         try:
-            tabs = self._api("GET", "/tabs")
-            if isinstance(tabs, list) and tabs:
-                active = next((t for t in tabs if t.get("active")), tabs[0])
+            tabs = self._api("GET", "/tabs/list")
+            tab_list = tabs.get("tabs", tabs) if isinstance(tabs, dict) else tabs
+            if isinstance(tab_list, list) and tab_list:
+                active = next((t for t in tab_list if t.get("active")), tab_list[0])
                 tab_id = active.get("id")
                 if tab_id:
-                    self._api("DELETE", f"/tabs/{tab_id}")
+                    self._api("POST", "/tabs/close", json={"tabId": tab_id})
                     return f"Closed tab {tab_id}"
         except Exception:
             pass
         return "No tab to close."
+
+    # ------------------------------------------------------------------
+    # Snapshot / Semantic Locators (@eN refs)
+    # ------------------------------------------------------------------
+
+    def _snapshot(self, **_: Any) -> str:
+        """Get accessibility tree snapshot with @eN element references."""
+        result = self._api("GET", "/snapshot", params={"compact": "true"})
+        if isinstance(result, dict):
+            text = result.get("snapshot", result.get("text", str(result)))
+        else:
+            text = str(result)
+        if len(text) > 20000:
+            text = text[:20000] + "\n\n... [truncated]"
+        return text
+
+    def _find(self, text: str = "", by: str = "text", **_: Any) -> str:
+        """Find elements using semantic locator queries."""
+        if not text:
+            return "Error: 'text' query is required for find action."
+        result = self._api("POST", "/find", json={"query": text, "by": by})
+        if isinstance(result, dict):
+            elements = result.get("elements", [result])
+        elif isinstance(result, list):
+            elements = result
+        else:
+            return str(result)
+        lines = [f"Found {len(elements)} element(s):"]
+        for el in elements[:20]:
+            ref = el.get("ref", "?")
+            tag = el.get("tag", el.get("role", "?"))
+            txt = el.get("text", el.get("name", ""))[:80]
+            lines.append(f"  {ref} <{tag}> {txt}")
+        return "\n".join(lines)
+
+    def _find_click(self, text: str = "", by: str = "text", **_: Any) -> str:
+        """Find element by semantic query and click it."""
+        if not text:
+            return "Error: 'text' query is required."
+        result = self._api("POST", "/find/click", json={"query": text, "by": by})
+        return f"Clicked element matching '{text}' (by {by})"
+
+    def _find_fill(self, selector: str = "", text: str = "", by: str = "text", **_: Any) -> str:
+        """Find an input element and fill it with text."""
+        if not selector or not text:
+            return "Error: 'selector' (query) and 'text' are required."
+        result = self._api("POST", "/find/fill", json={"query": selector, "value": text, "by": by})
+        return f"Filled '{selector}' with '{text}'"
+
+    # ------------------------------------------------------------------
+    # Tab Management
+    # ------------------------------------------------------------------
+
+    def _open_tab(self, url: str = "", **_: Any) -> str:
+        """Open a new browser tab."""
+        payload: dict[str, Any] = {"focus": True}
+        if url:
+            payload["url"] = url
+        result = self._api("POST", "/tabs/open", json=payload)
+        tab_id = result.get("id", "?") if isinstance(result, dict) else "?"
+        return f"Opened new tab {tab_id}" + (f" → {url}" if url else "")
+
+    def _close_tab_by_id(self, tab_id: str = "", **_: Any) -> str:
+        """Close a tab by ID."""
+        if not tab_id:
+            return "Error: 'tab_id' is required."
+        self._api("POST", "/tabs/close", json={"tabId": tab_id})
+        return f"Closed tab {tab_id}"
+
+    def _list_tabs(self, **_: Any) -> str:
+        """List all open browser tabs."""
+        result = self._api("GET", "/tabs/list")
+        tab_list = result.get("tabs", result) if isinstance(result, dict) else result
+        if not tab_list:
+            return "No tabs open."
+        lines = ["**Open Tabs:**"]
+        for t in (tab_list if isinstance(tab_list, list) else [tab_list]):
+            tid = t.get("id", "?")
+            title = t.get("title", "")[:50]
+            url = t.get("url", "")[:60]
+            active = " ← active" if t.get("active") else ""
+            lines.append(f"  [{tid}] {title} ({url}){active}")
+        return "\n".join(lines)
+
+    def _focus_tab(self, tab_id: str = "", **_: Any) -> str:
+        """Switch to a specific tab."""
+        if not tab_id:
+            return "Error: 'tab_id' is required."
+        self._api("POST", "/tabs/focus", json={"tabId": tab_id})
+        return f"Focused tab {tab_id}"
+
+    # ------------------------------------------------------------------
+    # DevTools Bridge
+    # ------------------------------------------------------------------
+
+    def _devtools_console(self, level: str = "all", **_: Any) -> str:
+        """Get browser console output."""
+        endpoint = "/devtools/console/errors" if level == "error" else "/devtools/console"
+        params = {} if level in ("all", "error") else {"level": level}
+        result = self._api("GET", endpoint, params=params)
+        entries = result if isinstance(result, list) else result.get("entries", result.get("logs", []))
+        if not entries:
+            return "No console output."
+        lines = ["**Console Output:**"]
+        for e in (entries[-30:] if isinstance(entries, list) else [entries]):
+            if isinstance(e, dict):
+                lvl = e.get("level", "log")
+                msg = e.get("text", e.get("message", str(e)))[:200]
+                lines.append(f"  [{lvl}] {msg}")
+            else:
+                lines.append(f"  {str(e)[:200]}")
+        return "\n".join(lines)
+
+    def _devtools_network(self, **_: Any) -> str:
+        """Get recent network requests."""
+        result = self._api("GET", "/devtools/network")
+        entries = result if isinstance(result, list) else result.get("entries", result.get("requests", []))
+        if not entries:
+            return "No network requests logged."
+        lines = ["**Network Requests:**"]
+        for e in (entries[-20:] if isinstance(entries, list) else [entries]):
+            if isinstance(e, dict):
+                method = e.get("method", "?")
+                url = e.get("url", "")[:80]
+                status = e.get("status", e.get("statusCode", "?"))
+                lines.append(f"  {method} {url} → {status}")
+            else:
+                lines.append(f"  {str(e)[:100]}")
+        return "\n".join(lines)
+
+    def _devtools_dom(self, selector: str = "", **_: Any) -> str:
+        """Query DOM elements by CSS selector or XPath."""
+        if not selector:
+            return "Error: 'selector' is required for devtools_dom."
+        is_xpath = selector.startswith("/") or selector.startswith("(")
+        endpoint = "/devtools/dom/xpath" if is_xpath else "/devtools/dom/query"
+        result = self._api("POST", endpoint, json={"selector" if not is_xpath else "expression": selector})
+        if isinstance(result, dict):
+            nodes = result.get("nodes", result.get("elements", [result]))
+        elif isinstance(result, list):
+            nodes = result
+        else:
+            return str(result)
+        lines = [f"Found {len(nodes)} node(s):"]
+        for n in nodes[:15]:
+            if isinstance(n, dict):
+                tag = n.get("nodeName", n.get("tag", "?"))
+                text = n.get("textContent", n.get("text", ""))[:100]
+                lines.append(f"  <{tag}> {text}")
+            else:
+                lines.append(f"  {str(n)[:100]}")
+        return "\n".join(lines)
+
+    def _devtools_performance(self, **_: Any) -> str:
+        """Get page performance metrics."""
+        result = self._api("GET", "/devtools/performance")
+        if isinstance(result, dict):
+            lines = ["**Performance Metrics:**"]
+            metrics = result.get("metrics", result)
+            for k, v in (metrics.items() if isinstance(metrics, dict) else []):
+                lines.append(f"  {k}: {v}")
+            return "\n".join(lines)
+        return str(result)
+
+    # ------------------------------------------------------------------
+    # Content & Data
+    # ------------------------------------------------------------------
+
+    def _extract_content(self, **_: Any) -> str:
+        """Extract current page content as clean markdown."""
+        result = self._api("POST", "/content/extract")
+        if isinstance(result, dict):
+            md = result.get("markdown", result.get("content", result.get("text", "")))
+        else:
+            md = str(result)
+        if len(md) > 30000:
+            md = md[:30000] + "\n\n... [truncated]"
+        return md
+
+    def _search_history(self, text: str = "", **_: Any) -> str:
+        """Search browsing history."""
+        if not text:
+            return "Error: 'text' search query is required."
+        result = self._api("GET", "/history/search", params={"query": text})
+        entries = result if isinstance(result, list) else result.get("entries", result.get("results", []))
+        if not entries:
+            return f"No history matches for '{text}'."
+        lines = [f"**History search: '{text}'**"]
+        for e in (entries[:15] if isinstance(entries, list) else [entries]):
+            if isinstance(e, dict):
+                title = e.get("title", "")[:50]
+                url = e.get("url", "")[:60]
+                lines.append(f"  {title} — {url}")
+            else:
+                lines.append(f"  {str(e)[:100]}")
+        return "\n".join(lines)
+
+    def _search_bookmarks(self, text: str = "", **_: Any) -> str:
+        """Search bookmarks."""
+        if not text:
+            # List all bookmarks
+            result = self._api("GET", "/bookmarks")
+        else:
+            result = self._api("GET", "/bookmarks", params={"search": text})
+        entries = result if isinstance(result, list) else result.get("bookmarks", [])
+        if not entries:
+            return "No bookmarks found."
+        lines = ["**Bookmarks:**"]
+        for b in (entries[:20] if isinstance(entries, list) else [entries]):
+            if isinstance(b, dict):
+                title = b.get("title", "")[:50]
+                url = b.get("url", "")[:60]
+                lines.append(f"  {title} — {url}")
+            else:
+                lines.append(f"  {str(b)[:100]}")
+        return "\n".join(lines)
+
+    def _network_apis(self, **_: Any) -> str:
+        """Get detected API endpoints from network traffic."""
+        result = self._api("GET", "/network/apis")
+        entries = result if isinstance(result, list) else result.get("apis", result.get("endpoints", []))
+        if not entries:
+            return "No API endpoints detected."
+        lines = ["**Detected APIs:**"]
+        for e in (entries[:30] if isinstance(entries, list) else [entries]):
+            if isinstance(e, dict):
+                method = e.get("method", "?")
+                url = e.get("url", e.get("endpoint", ""))[:80]
+                lines.append(f"  {method} {url}")
+            else:
+                lines.append(f"  {str(e)[:100]}")
+        return "\n".join(lines)
+
+    def _status(self, **_: Any) -> str:
+        """Get tandem-browser status and health info."""
+        result = self._api("GET", "/status")
+        if isinstance(result, dict):
+            lines = ["**Tandem Browser Status:**"]
+            for k, v in result.items():
+                if isinstance(v, dict):
+                    lines.append(f"  {k}:")
+                    for sk, sv in v.items():
+                        lines.append(f"    {sk}: {sv}")
+                else:
+                    lines.append(f"  {k}: {v}")
+            return "\n".join(lines)
+        return str(result)

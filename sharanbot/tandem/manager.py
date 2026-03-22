@@ -140,6 +140,8 @@ class TandemManager:
             if self.is_running:
                 logger.info("Tandem Browser started — API available on port {}", TANDEM_API_PORT)
                 self._started = True
+                # Configure Wingman autonomy for SharanBot usage
+                await self._configure_wingman()
                 # Open dashboard in tandem
                 if self._dashboard_url:
                     await self._open_dashboard()
@@ -164,6 +166,21 @@ class TandemManager:
                 logger.warning("Failed to open dashboard in Tandem: {} {}", r.status_code, r.text[:200])
         except Exception as e:
             logger.warning("Could not navigate Tandem to dashboard: {}", e)
+
+    async def _configure_wingman(self) -> None:
+        """Configure Wingman autonomy for SharanBot — auto-approve safe actions."""
+        try:
+            requests.patch(
+                f"{TANDEM_API_BASE}/autonomy",
+                json={
+                    "autoApproveRead": True,
+                    "autoApproveNavigate": True,
+                },
+                timeout=5,
+            )
+            logger.info("Wingman autonomy configured (auto-approve read + navigate)")
+        except Exception as e:
+            logger.debug("Could not configure Wingman autonomy: {}", e)
 
     async def stop(self) -> None:
         """Stop the tandem-browser process."""

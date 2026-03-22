@@ -38,6 +38,7 @@ from sharanbot.agent.team.autopilot import Autopilot
 from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.agent.tools.browser import BrowserTool
 from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
+from sharanbot.agent.tools.wingman import WingmanTaskTool, WingmanChatTool
 from sharanbot.agent.tools.sandbox import SandboxTool
 from sharanbot.agent.learning import LearningStore
 from sharanbot.agent.recovery import RecoveryEngine
@@ -239,6 +240,10 @@ class AgentLoop:
         self.tools.register(TandemBrowserTool(
             screenshots_dir=self.workspace / "screenshots",
         ))
+
+        # Wingman tools — task delegation + chat with tandem-browser's AI agent
+        self.tools.register(WingmanTaskTool())
+        self.tools.register(WingmanChatTool())
 
         # Sandbox tool (Docker-based isolated execution)
         self.tools.register(SandboxTool(workspace=self.workspace))

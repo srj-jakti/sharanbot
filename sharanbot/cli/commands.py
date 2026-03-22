@@ -737,6 +737,8 @@ def gateway(
     tandem = TandemManager(dashboard_url=dashboard_url)
     if tandem.tandem_dir:
         console.print(f"[green]✓[/green] Tandem Browser: {tandem.tandem_dir}")
+        console.print(f"[green]✓[/green] Wingman AI agent: task delegation + chat enabled")
+        console.print(f"[green]✓[/green] Tandem MCP: 40+ browser tools via MCP protocol")
     else:
         console.print("[yellow]Warning: tandem-browser directory not found — browser tool will not work[/yellow]")
 
