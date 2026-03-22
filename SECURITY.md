@@ -235,6 +235,29 @@ If you suspect a security breach:
 4. **Limited Command Filtering** - Only blocks obvious dangerous patterns
 5. **No Audit Trail** - Limited security event logging (enhance as needed)
 
+### Browser Tool Security
+
+The built-in browser tool (Playwright) has the following protections:
+- Only `http://` and `https://` URLs are allowed (no `file://`)
+- Internal/private IPs are flagged (localhost allowed for local dev)
+- Screenshots are saved to a local directory, not sent externally
+
+**Recommendations:**
+- Review browser tool usage in agent logs
+- Avoid exposing the gateway to untrusted users when browser tool is enabled
+
+### Sandbox Tool Security
+
+The Docker sandbox tool runs code in isolated containers:
+- Containers run with default Docker security (no `--privileged`)
+- A timeout prevents runaway containers (120s default)
+- Workspace files can be mounted read-only for testing
+
+**Recommendations:**
+- Ensure Docker daemon is properly secured
+- Review sandbox usage logs for unexpected container activity
+- Consider limiting Docker network access for sandbox containers
+
 ## Security Checklist
 
 Before deploying sharanbot:

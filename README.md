@@ -12,9 +12,9 @@
   </p>
 </div>
 
-🤖 **SharanBot** is an **ultra-lightweight** personal AI assistant.
+🤖 **SharanBot** is an **autonomous AI assistant** with self-provisioning, multi-agent team orchestration, and self-evolution capabilities.
 
-⚡️ Delivers core agent functionality in a clean, minimal codebase.
+⚡️ Clean, minimal codebase that punches way above its weight — teams, autopilot, browser control, sandboxed execution, and more.
 
 📏 Real-time line count: run `bash core_agent_lines.sh` to verify anytime.
 
@@ -76,11 +76,21 @@
 
 🪶 **Ultra-Lightweight**: A super lightweight AI assistant framework — minimal, fast, and powerful.
 
-🔬 **Research-Ready**: Clean, readable code that's easy to understand, modify, and extend for research.
+🤖 **Autonomous Mindset**: Self-provisioning — automatically installs missing dependencies, creates files, and fixes errors without asking.
+
+🧠 **Multi-Agent Teams**: Orchestrate teams of specialist agents (architect, frontend, backend, tester, etc.) to tackle complex projects with a DAG-based task pipeline.
+
+🔀 **Autopilot Routing**: Automatically classifies task complexity and routes to direct response, subagent, or full team orchestration.
+
+🌐 **Browser & Sandbox**: Built-in Playwright browser for web interaction and Docker sandbox for safe isolated code execution.
+
+🔄 **Self-Evolution**: Hot-reload tools, plugins, workers, MCP servers, and channels without restarting.
+
+💬 **11 Chat Channels**: Telegram, Discord, WhatsApp, Slack, Email, Feishu, DingTalk, QQ, Wecom, Matrix, and Mochat.
 
 ⚡️ **Lightning Fast**: Minimal footprint means faster startup, lower resource usage, and quicker iterations.
 
-💎 **Easy-to-Use**: One-click to deploy and you're ready to go.
+💎 **Easy-to-Use**: One command to deploy and you're ready to go.
 
 ## 🏗️ Architecture
 
@@ -106,6 +116,24 @@
 - [Project Structure](#-project-structure)
 - [Contribute & Roadmap](#-contribute--roadmap)
 - [Star History](#-star-history)
+
+## 🧠 SharanBot Capabilities
+
+Beyond basic chat, SharanBot includes advanced autonomous capabilities:
+
+| Capability | Description |
+|-----------|-------------|
+| **Autopilot** | Automatically classifies task complexity (simple/moderate/complex) and routes to the right strategy |
+| **Multi-Agent Teams** | Decomposes complex tasks into a DAG of subtasks, assigns specialist agents, and orchestrates parallel execution |
+| **26 Agent Profiles** | Architect, frontend, backend, database, devops, tester, security, data-scientist, and more |
+| **Self-Provisioning** | Installs missing packages, creates files, and fixes errors without user intervention |
+| **Browser Control** | Navigate websites, take screenshots, click/type/scroll via headless Playwright |
+| **Docker Sandbox** | Execute code safely in isolated Docker containers |
+| **Auto Context Management** | Proactively consolidates conversation history when approaching context window limits |
+| **User Intent Understanding** | Parses through typos, infers scope, and understands implicit requests |
+| **Self-Evolution** | Hot-reload tools, plugins, agents, MCP servers, and channels at runtime |
+| **MCP Integration** | Connect to any MCP server for extended tool capabilities |
+| **Workers** | Spawn dedicated background workers (GSD-2 etc.) for long-running tasks |
 
 ## ✨ Features
 
@@ -1338,13 +1366,95 @@ sharanbot gateway --config ~/.sharanbot-telegram/config.json --workspace /tmp/sh
 | `sharanbot agent` | Interactive chat mode |
 | `sharanbot agent --no-markdown` | Show plain-text replies |
 | `sharanbot agent --logs` | Show runtime logs during chat |
-| `sharanbot gateway` | Start the gateway |
+| `sharanbot gateway` | Start the gateway (connects all enabled channels) |
+| `sharanbot gateway -p 8080` | Start gateway on a custom port |
+| `sharanbot gateway -v` | Start gateway with verbose/debug logging |
 | `sharanbot status` | Show status |
 | `sharanbot provider login openai-codex` | OAuth login for providers |
 | `sharanbot channels login` | Link WhatsApp (scan QR) |
 | `sharanbot channels status` | Show channel status |
 
 Interactive mode exits: `exit`, `quit`, `/exit`, `/quit`, `:q`, or `Ctrl+D`.
+
+<details>
+<summary><b>Starting the Gateway (Step-by-Step)</b></summary>
+
+The gateway is the main way to run SharanBot — it connects to all your enabled chat channels (Telegram, Discord, etc.) and runs continuously.
+
+**Prerequisites:**
+1. Python 3.11+ installed
+2. SharanBot installed (`pip install -e .` from source, or `pip install sharanbot-ai`)
+3. Config initialized (`sharanbot onboard`)
+4. At least one LLM provider API key set in `~/.sharanbot/config.json`
+5. At least one channel enabled (e.g. Telegram)
+
+**Step 1: Configure your provider**
+
+Edit `~/.sharanbot/config.json` and set your API key:
+```json
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "sk-or-v1-your-key-here"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-opus-4-5",
+      "provider": "openrouter"
+    }
+  }
+}
+```
+
+**Step 2: Enable a channel** (e.g. Telegram)
+```json
+{
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "YOUR_BOT_TOKEN_FROM_BOTFATHER",
+      "allowFrom": ["*"]
+    }
+  }
+}
+```
+
+**Step 3: Start the gateway**
+```bash
+sharanbot gateway
+```
+
+You should see output like:
+```
+🤖 Starting sharanbot gateway version 0.1.4.post5 on port 18790...
+✓ Channels enabled: telegram
+✓ Heartbeat: every 1800s
+✓ Self-evolution: reload, evolve, dynamic tools enabled
+✓ Worker types: 1 available
+✓ Agent profiles: 26 available
+```
+
+**Step 4: Verify it's working**
+
+Send a message to your bot on Telegram (or whichever channel you enabled). You should get a response.
+
+**Running from source** (development mode):
+```bash
+cd /path/to/SharanBot
+pip install -e .
+python -m sharanbot gateway
+```
+
+**Stopping:** Press `Ctrl+C` to gracefully shut down.
+
+**Troubleshooting:**
+- **"Another bot instance is running"**: Kill the old process first (`taskkill /F /PID <pid>` on Windows, `kill <pid>` on Linux)
+- **"No channels enabled"**: Check that at least one channel has `"enabled": true` in config.json
+- **API errors**: Verify your API key is correct and the provider/model are set
+- **MCP connection errors**: Ensure Node.js is installed (`node --version`) for MCP servers
+
+</details>
 
 <details>
 <summary><b>Heartbeat (Periodic Tasks)</b></summary>
@@ -1462,22 +1572,43 @@ If you edit the `.service` file itself, run `systemctl --user daemon-reload` bef
 
 ```
 sharanbot/
-├── agent/          # 🧠 Core agent logic
-│   ├── loop.py     #    Agent loop (LLM ↔ tool execution)
-│   ├── context.py  #    Prompt builder
-│   ├── memory.py   #    Persistent memory
-│   ├── skills.py   #    Skills loader
-│   ├── subagent.py #    Background task execution
-│   └── tools/      #    Built-in tools (incl. spawn)
-├── skills/         # 🎯 Bundled skills (github, weather, tmux...)
-├── channels/       # 📱 Chat channel integrations (supports plugins)
-├── bus/            # 🚌 Message routing
-├── cron/           # ⏰ Scheduled tasks
-├── heartbeat/      # 💓 Proactive wake-up
-├── providers/      # 🤖 LLM providers (OpenRouter, etc.)
-├── session/        # 💬 Conversation sessions
-├── config/         # ⚙️ Configuration
-└── cli/            # 🖥️ Commands
+├── agent/              # 🧠 Core agent logic
+│   ├── loop.py         #    Agent loop (LLM ↔ tool execution)
+│   ├── context.py      #    System prompt builder
+│   ├── memory.py       #    Persistent memory + auto-consolidation
+│   ├── skills.py       #    Skills loader
+│   ├── subagent.py     #    Background subagent execution
+│   ├── worker.py       #    Worker manager (GSD-2, etc.)
+│   ├── worker_registry.py  # Worker type discovery
+│   ├── profiles.py     #    Agent profile registry (26 specialists)
+│   ├── team/           #    🏗️ Multi-agent team orchestration
+│   │   ├── orchestrator.py  # Team lifecycle & execution
+│   │   ├── dag.py      #    Task dependency graph
+│   │   ├── planner.py  #    LLM-powered task decomposition
+│   │   ├── bus.py      #    Inter-agent message bus
+│   │   ├── pipelines.py #   Predefined pipelines (full_stack, etc.)
+│   │   ├── quality.py  #    Quality gate validation
+│   │   ├── autopilot.py #   Task complexity analysis & routing
+│   │   └── trace.py    #    Execution tracing
+│   └── tools/          #    Built-in tools
+│       ├── filesystem.py #  Read/write/edit/list files
+│       ├── shell.py    #    Shell command execution
+│       ├── web.py      #    Web search & fetch
+│       ├── browser.py  #    🌐 Playwright browser control
+│       ├── sandbox.py  #    🐳 Docker sandbox execution
+│       ├── mcp.py      #    MCP server integration
+│       ├── spawn.py    #    Subagent spawning
+│       ├── team_tools.py #  Team create/steer/status
+│       └── worker.py   #    Worker management tools
+├── skills/             # 🎯 Bundled skills (github, weather, tmux...)
+├── channels/           # 📱 Chat channel integrations (11 channels + plugins)
+├── bus/                # 🚌 Message routing
+├── cron/               # ⏰ Scheduled tasks
+├── heartbeat/          # 💓 Proactive wake-up
+├── providers/          # 🤖 LLM providers (20+ supported)
+├── session/            # 💬 Conversation sessions
+├── config/             # ⚙️ Configuration + hot-reload watcher
+└── cli/                # 🖥️ CLI commands
 ```
 
 ## 🤝 Contribute & Roadmap
@@ -1495,11 +1626,18 @@ PRs welcome! The codebase is intentionally small and readable. 🤗
 
 **Roadmap** — Pick an item and [open a PR](https://github.com/airajakathi/Sharanbot/pulls)!
 
+- [x] **Multi-agent teams** — DAG-based orchestration with 26 specialist profiles
+- [x] **Self-evolution** — Hot-reload tools, plugins, workers, MCP servers, channels
+- [x] **Autopilot routing** — Automatic complexity analysis and strategy selection
+- [x] **Browser control** — Playwright-based web interaction
+- [x] **Sandbox execution** — Docker-isolated code execution
+- [x] **Self-provisioning** — Auto-install missing dependencies and fix errors
+- [x] **Auto context management** — Proactive memory consolidation at 75% window
 - [ ] **Multi-modal** — See and hear (images, voice, video)
-- [ ] **Long-term memory** — Never forget important context
-- [ ] **Better reasoning** — Multi-step planning and reflection
-- [ ] **More integrations** — Calendar and more
-- [ ] **Self-improvement** — Learn from feedback and mistakes
+- [ ] **Streaming responses** — Real-time streaming to Telegram and other channels
+- [ ] **Persistent team state** — Resume team execution after restart
+- [ ] **Rate limiting** — API throttling for parallel team LLM calls
+- [ ] **More integrations** — Calendar, notifications, and more
 
 ### Contributors
 

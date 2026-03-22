@@ -71,12 +71,12 @@ Keep setup boring and reliable. The goal is to get you into the code quickly:
 ```bash
 # Clone the repository
 git clone https://github.com/airajakathi/Sharanbot.git
-cd sharanbot
+cd SharanBot
 
 # Install with dev dependencies
-pip install -e ".[dev]"
+pip install -e \".[dev]\"
 
-# Run tests
+# Run tests (647 tests expected to pass)
 pytest
 
 # Lint code
@@ -84,6 +84,20 @@ ruff check sharanbot/
 
 # Format code
 ruff format sharanbot/
+```
+
+### Running the Gateway Locally
+
+```bash
+# Initialize config (first time only)
+sharanbot onboard
+
+# Edit config to add your API key and enable a channel
+# Windows: notepad %USERPROFILE%\\.sharanbot\\config.json
+# Linux/Mac: nano ~/.sharanbot/config.json
+
+# Start the gateway
+python -m sharanbot gateway
 ```
 
 ## Code Style
