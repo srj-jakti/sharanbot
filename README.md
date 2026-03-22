@@ -33,10 +33,10 @@ Built for builders who want an AI that acts like a **demon boss**: fierce, relen
 
 ## Core Powers
 
-### 🔥 Multi-Agent Team Orchestration
+### Multi-Agent Team Orchestration
 Decomposes complex tasks into a DAG of subtasks, assigns specialist agents (architect, frontend, backend, devops, tester, security, data-scientist, and 19 more), and orchestrates parallel execution with quality gates.
 
-### 🛡️ Self-Healing & Auto-Recovery
+### Self-Healing & Auto-Recovery
 Never crashes permanently. The **RecoveryEngine** handles 8 error categories with circuit breakers:
 - **Rate limits** → Adaptive exponential backoff (10-120s)
 - **API errors** → 5-level retry (1, 2, 4, 8, 16s)
@@ -45,14 +45,14 @@ Never crashes permanently. The **RecoveryEngine** handles 8 error categories wit
 - **Gateway errors** → Circuit trip + graceful recovery
 - **Timeouts** → Adaptive task timeout adjustment
 
-### 🧠 Self-Learning
+### Self-Learning
 The **LearningStore** remembers every error and every fix. Patterns are persisted to disk. SharanBot never makes the same mistake twice:
 - Error signatures tracked with occurrence counts
 - Successful fixes replayed automatically on matching errors
 - Adaptive cooldowns via exponential moving average
 - Cross-session persistence (survives restarts)
 
-### 🚀 Proactive Autopilot
+### Proactive Autopilot
 Goes beyond reactive routing — the autopilot **anticipates** what you need:
 - **Superhuman memory**: Cross-session user profiling (tracks your tasks, preferred strategies, peak hours, complexity trends)
 - **Pattern caching**: Instant re-routing for similar tasks without LLM call
@@ -61,7 +61,7 @@ Goes beyond reactive routing — the autopilot **anticipates** what you need:
 - **Learning-store-aware**: Avoids strategies that previously failed
 - Routes to **direct** (simple) → **subagent** (moderate) → **full team** (complex)
 
-### 🔐 Encrypted Vault
+### Encrypted Vault
 Secure credential storage for API keys, tokens, and passwords:
 - **PBKDF2** key derivation (480K iterations + SHA-256)
 - **Fernet** symmetric encryption (AES-128-CBC + HMAC)
@@ -70,19 +70,19 @@ Secure credential storage for API keys, tokens, and passwords:
 - Slash-path keys: `provider/openrouter/apiKey` → nested config overlay
 - Persistent `vault.json` with encrypted entries
 
-### 🖥️ Real-Time Dashboard
+### Real-Time Dashboard
 Live web dashboard showing everything SharanBot is doing:
 - **6 tabs**: Overview, Services, Teams, Health, Vault, Logs
 - **WebSocket**: Auto-reconnecting real-time updates every 3 seconds
 - **Service monitoring**: Running apps, monitors, agents with status badges
 - **Team tracking**: Active teams with task progress (completed/total)
-- **Health view**: Circuit breaker visualization (green=closed, red=open)
+- **Health view**: Circuit breaker visualization (closed/open)
 - **Learning summary**: Patterns learned, successful fixes by category
 - **Vault keys**: Listed with masked values
 - **Activity log**: Live timestamp-tagged events
-- Dark-themed SPA at `http://127.0.0.1:18791`
+- Professional dark-themed SPA with minimal color palette at `http://127.0.0.1:18791`
 
-### ⚙️ Autonomous Service Manager
+### Autonomous Service Manager
 Run and monitor long-lived services, deployed apps, and autonomous agents:
 - **Lifecycle management**: Register → Start → Running → Stop/Restart/Remove
 - **Auto-restart**: Dead processes detected and restarted (configurable max restarts)
@@ -91,11 +91,11 @@ Run and monitor long-lived services, deployed apps, and autonomous agents:
 - **Persistence**: Service configs saved to `services.json`, restored on restart
 - Service kinds: `app` | `agent` | `monitor` | `cron` | `custom`
 
-### 🌐 Browser & Sandbox
+### Browser & Sandbox
 - **Playwright** browser control: navigate, click, type, screenshot
 - **Docker** sandbox: execute code in isolated containers
 
-### 🔄 Self-Evolution
+### Self-Evolution
 Hot-reload at runtime without restart:
 - Tools, plugins, agent profiles
 - MCP servers, worker types
@@ -238,19 +238,19 @@ The real-time dashboard runs alongside the gateway at `http://127.0.0.1:18791`:
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  🔥 SharanBot Dashboard                         │
+│  SHARANBOT                         [Connected]   │
 │  ┌──────┬──────┬──────┬──────┐                   │
-│  │ 3    │ 2    │ 5    │ 47   │                   │
+│  │  3   │  2   │  5   │  47  │                   │
 │  │ Svcs │Teams │ Cron │Learn │                   │
 │  └──────┴──────┴──────┴──────┘                   │
 │                                                   │
-│  Services   │ Status │ PID  │ Uptime             │
+│  Services   │ Status  │ PID  │ Uptime            │
 │  ──────────────────────────────                   │
-│  my-app     │ 🟢     │ 1234 │ 2h 15m             │
-│  monitor    │ 🟢     │ 5678 │ 1h 30m             │
-│  worker-1   │ 🔴     │ —    │ stopped            │
+│  my-app     │ running │ 1234 │ 2h 15m            │
+│  monitor    │ running │ 5678 │ 1h 30m            │
+│  worker-1   │ stopped │ —    │ —                  │
 │                                                   │
-│  Circuit Breakers: 🟢 LLM  🟢 MCP  🟢 Tools    │
+│  Circuits: [*] LLM  [*] MCP  [*] Tools           │
 └──────────────────────────────────────────────────┘
 ```
 

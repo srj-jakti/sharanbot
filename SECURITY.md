@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in sharanbot, please report it by:
+If you discover a security vulnerability in SharanBot, please report it by:
 
 1. **DO NOT** open a public GitHub issue
 2. Create a private security advisory on GitHub or contact the repository maintainers via [GitHub Issues](https://github.com/airajakathi/Sharanbot/issues)
@@ -67,7 +67,7 @@ The `exec` tool can execute shell commands. While dangerous command patterns are
 - ✅ Review all tool usage in agent logs
 - ✅ Understand what commands the agent is running
 - ✅ Use a dedicated user account with limited privileges
-- ✅ Never run sharanbot as root
+- ✅ Never run SharanBot as root
 - ❌ Don't disable security checks
 - ❌ Don't run on systems with sensitive data without careful review
 
@@ -82,7 +82,7 @@ The `exec` tool can execute shell commands. While dangerous command patterns are
 
 File operations have path traversal protection, but:
 
-- ✅ Run sharanbot with a dedicated user account
+- ✅ Run SharanBot with a dedicated user account
 - ✅ Use filesystem permissions to protect sensitive directories
 - ✅ Regularly audit file operations in logs
 - ❌ Don't give unrestricted access to sensitive files
@@ -186,7 +186,7 @@ For production use:
 - **Logs may contain sensitive information** - secure log files appropriately
 - **LLM providers see your prompts** - review their privacy policies
 - **Chat history is stored locally** - protect the `~/.sharanbot` directory
-- **API keys are in plain text** - use OS keyring for production
+- **API keys are in plain text** - use the built-in Vault (`sharanbot vault set`) or OS keyring for production
 
 ### 10. Incident Response
 

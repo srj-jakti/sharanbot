@@ -6,61 +6,100 @@
 <title>SharanBot Dashboard</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--red:#ff2200;--gold:#ffd700;--green:#00ff88;--blue:#4488ff;--text:#e0e0e0;--dim:#666;--orange:#ff8800}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
-.header{background:linear-gradient(135deg,#1a0a2e,#0d0d1a);border-bottom:2px solid var(--red);padding:12px 24px;display:flex;align-items:center;gap:16px}
-.header h1{font-size:22px;color:var(--red);letter-spacing:2px;font-weight:900}
-.header .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.header .subtitle{color:var(--dim);font-size:13px;margin-left:auto}
-.nav{background:#0f0f18;border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0}
-.nav button{background:none;border:none;color:var(--dim);padding:12px 20px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;transition:all .2s}
+:root{
+  --bg:#101014;
+  --surface:#18181c;
+  --card:#1e1e24;
+  --border:#2a2a32;
+  --accent:#a0a0b0;
+  --text:#d4d4dc;
+  --dim:#6b6b78;
+  --ok:#5a9a6a;
+  --warn:#b08840;
+  --err:#a04848;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* Header */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:14px}
+.header h1{font-size:16px;color:var(--text);letter-spacing:3px;font-weight:600;text-transform:uppercase}
+.header .status-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);animation:pulse 2.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.header .subtitle{color:var(--dim);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums}
+
+/* Navigation */
+.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;display:flex;gap:0}
+.nav button{background:none;border:none;color:var(--dim);padding:11px 18px;cursor:pointer;font-size:12px;font-weight:500;letter-spacing:.5px;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
 .nav button:hover{color:var(--text)}
-.nav button.active{color:var(--red);border-bottom-color:var(--red)}
-.main{padding:20px 24px;max-width:1400px;margin:0 auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-.stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
-.stat-card .value{font-size:32px;font-weight:900;color:var(--red)}
-.stat-card .label{font-size:12px;color:var(--dim);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
-.stat-card.green .value{color:var(--green)}
-.stat-card.blue .value{color:var(--blue)}
-.stat-card.orange .value{color:var(--orange)}
-.stat-card.gold .value{color:var(--gold)}
-.panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
-.panel h2{font-size:15px;color:var(--red);margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.panel h2 .icon{font-size:18px}
+.nav button.active{color:var(--text);border-bottom-color:var(--accent)}
+
+/* Main */
+.main{padding:24px 28px;max-width:1400px;margin:0 auto}
+
+/* Stat cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px 16px;text-align:center;transition:border-color .2s}
+.stat-card:hover{border-color:var(--accent)}
+.stat-card .value{font-size:30px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.stat-card .label{font-size:11px;color:var(--dim);margin-top:6px;text-transform:uppercase;letter-spacing:1.2px;font-weight:500}
+
+/* Panels */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:14px}
+.panel h2{font-size:13px;color:var(--accent);margin-bottom:14px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.panel h2 .icon{font-size:15px;opacity:.7}
+
+/* Tables */
 table{width:100%;border-collapse:collapse}
-th{text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:8px 12px;border-bottom:1px solid var(--border)}
-td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
-.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.badge.running{background:#00ff8822;color:var(--green);border:1px solid #00ff8844}
-.badge.stopped{background:#66666622;color:var(--dim);border:1px solid #66666644}
-.badge.error{background:#ff220022;color:var(--red);border:1px solid #ff220044}
-.badge.completed{background:#4488ff22;color:var(--blue);border:1px solid #4488ff44}
-.badge.pending{background:#ff880022;color:var(--orange);border:1px solid #ff880044}
-.log-box{background:#06060a;border:1px solid var(--border);border-radius:6px;padding:12px;max-height:300px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;line-height:1.6;color:#aaa}
+th{text-align:left;color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1.2px;font-weight:600;padding:8px 12px;border-bottom:1px solid var(--border)}
+td{padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+
+/* Badges */
+.badge{display:inline-block;padding:3px 10px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.badge.running{background:rgba(90,154,106,.12);color:var(--ok);border:1px solid rgba(90,154,106,.25)}
+.badge.stopped{background:rgba(107,107,120,.1);color:var(--dim);border:1px solid rgba(107,107,120,.2)}
+.badge.error{background:rgba(160,72,72,.1);color:var(--err);border:1px solid rgba(160,72,72,.2)}
+.badge.completed{background:rgba(160,160,176,.1);color:var(--accent);border:1px solid rgba(160,160,176,.2)}
+.badge.pending{background:rgba(176,136,64,.1);color:var(--warn);border:1px solid rgba(176,136,64,.2)}
+
+/* Log box */
+.log-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:14px;max-height:320px;overflow-y:auto;font-family:'Cascadia Code','Fira Code','SF Mono',monospace;font-size:12px;line-height:1.7;color:var(--dim)}
+.log-box::-webkit-scrollbar{width:6px}
+.log-box::-webkit-scrollbar-track{background:transparent}
+.log-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .log-line{white-space:pre-wrap;word-break:break-all}
-.empty{color:var(--dim);text-align:center;padding:40px;font-size:14px}
+
+/* Empty state */
+.empty{color:var(--dim);text-align:center;padding:40px;font-size:13px}
+
+/* Sections */
 .section{display:none}
 .section.active{display:block}
-.circuit{display:inline-flex;align-items:center;gap:6px;margin:4px 8px}
-.circuit .dot{width:8px;height:8px;border-radius:50%}
-.circuit .dot.closed{background:var(--green)}
-.circuit .dot.open{background:var(--red)}
+
+/* Circuit breakers */
+.circuit{display:inline-flex;align-items:center;gap:7px;margin:5px 10px;padding:4px 0}
+.circuit .dot{width:7px;height:7px;border-radius:50%}
+.circuit .dot.closed{background:var(--ok)}
+.circuit .dot.open{background:var(--err)}
 .circuit .name{font-size:12px;color:var(--text)}
-.vault-key{background:#1a1a2e;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin:4px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center}
-.vault-key .k{color:var(--gold);font-family:monospace}
-.vault-key .masked{color:var(--dim)}
-.ws-status{font-size:11px;padding:4px 8px;border-radius:4px}
-.ws-status.connected{background:#00ff8822;color:var(--green)}
-.ws-status.disconnected{background:#ff220022;color:var(--red)}
+
+/* Vault keys */
+.vault-key{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin:5px 0;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.vault-key .k{color:var(--text);font-family:'Cascadia Code','Fira Code',monospace;font-size:12px}
+.vault-key .masked{color:var(--dim);font-size:12px;letter-spacing:2px}
+
+/* WebSocket status */
+.ws-status{font-size:10px;padding:4px 10px;border-radius:4px;font-weight:500;letter-spacing:.5px;text-transform:uppercase}
+.ws-status.connected{background:rgba(90,154,106,.12);color:var(--ok)}
+.ws-status.disconnected{background:rgba(160,72,72,.1);color:var(--err)}
 </style>
 </head>
 <body>
 <div class="header">
   <div class="status-dot" id="wsDot"></div>
-  <h1>SHARANBOT</h1>
-  <span id="wsStatus" class="ws-status disconnected">CONNECTING...</span>
+  <h1>SharanBot</h1>
+  <span id="wsStatus" class="ws-status disconnected">Connecting</span>
   <span class="subtitle" id="clock"></span>
 </div>
 <div class="nav">
@@ -76,14 +115,14 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- OVERVIEW -->
   <div class="section active" id="tab-overview">
     <div class="grid">
-      <div class="stat-card green"><div class="value" id="svcRunning">0</div><div class="label">Services Running</div></div>
-      <div class="stat-card blue"><div class="value" id="teamCount">0</div><div class="label">Teams</div></div>
-      <div class="stat-card orange"><div class="value" id="cronCount">0</div><div class="label">Cron Jobs</div></div>
-      <div class="stat-card gold"><div class="value" id="learnCount">0</div><div class="label">Patterns Learned</div></div>
+      <div class="stat-card"><div class="value" id="svcRunning">0</div><div class="label">Services Running</div></div>
+      <div class="stat-card"><div class="value" id="teamCount">0</div><div class="label">Teams</div></div>
+      <div class="stat-card"><div class="value" id="cronCount">0</div><div class="label">Cron Jobs</div></div>
+      <div class="stat-card"><div class="value" id="learnCount">0</div><div class="label">Patterns Learned</div></div>
       <div class="stat-card"><div class="value" id="svcTotal">0</div><div class="label">Total Services</div></div>
     </div>
     <div class="panel">
-      <h2><span class="icon">⚡</span> Live Activity</h2>
+      <h2><span class="icon">&#9889;</span> Live Activity</h2>
       <div id="liveActivity" class="log-box"><div class="empty">Waiting for data...</div></div>
     </div>
   </div>
@@ -91,7 +130,7 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- SERVICES -->
   <div class="section" id="tab-services">
     <div class="panel">
-      <h2><span class="icon">🔥</span> Autonomous Services</h2>
+      <h2><span class="icon">&#9881;</span> Autonomous Services</h2>
       <table>
         <thead><tr><th>Name</th><th>Kind</th><th>Status</th><th>PID</th><th>Uptime</th><th>Restarts</th></tr></thead>
         <tbody id="svcTable"></tbody>
@@ -103,7 +142,7 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- TEAMS -->
   <div class="section" id="tab-teams">
     <div class="panel">
-      <h2><span class="icon">👥</span> Agent Teams</h2>
+      <h2><span class="icon">&#9670;</span> Agent Teams</h2>
       <table>
         <thead><tr><th>Team ID</th><th>Task</th><th>Status</th><th>Progress</th></tr></thead>
         <tbody id="teamTable"></tbody>
@@ -115,11 +154,11 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- HEALTH -->
   <div class="section" id="tab-health">
     <div class="panel">
-      <h2><span class="icon">🛡️</span> Circuit Breakers</h2>
+      <h2><span class="icon">&#9632;</span> Circuit Breakers</h2>
       <div id="circuits"><div class="empty">No circuit data</div></div>
     </div>
     <div class="panel">
-      <h2><span class="icon">🧠</span> Learning Store</h2>
+      <h2><span class="icon">&#10070;</span> Learning Store</h2>
       <div id="learning"><div class="empty">No learning data</div></div>
     </div>
   </div>
@@ -127,7 +166,7 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- VAULT -->
   <div class="section" id="tab-vault">
     <div class="panel">
-      <h2><span class="icon">🔐</span> Encrypted Vault</h2>
+      <h2><span class="icon">&#9670;</span> Encrypted Vault</h2>
       <div id="vaultKeys"><div class="empty">Vault not configured</div></div>
     </div>
   </div>
@@ -135,7 +174,7 @@ td{padding:8px 12px;font-size:13px;border-bottom:1px solid #1a1a24}
   <!-- LOGS -->
   <div class="section" id="tab-logs">
     <div class="panel">
-      <h2><span class="icon">📋</span> System Logs</h2>
+      <h2><span class="icon">&#9776;</span> System Logs</h2>
       <div id="systemLogs" class="log-box"><div class="empty">No logs yet</div></div>
     </div>
   </div>
@@ -169,16 +208,16 @@ function connect() {
   ws = new WebSocket(`${proto}//${location.host}/ws`);
 
   ws.onopen = () => {
-    $('#wsStatus').textContent = 'CONNECTED';
+    $('#wsStatus').textContent = 'Connected';
     $('#wsStatus').className = 'ws-status connected';
-    $('#wsDot').style.background = 'var(--green)';
+    $('#wsDot').style.background = 'var(--ok)';
     addLog('Dashboard connected');
   };
 
   ws.onclose = () => {
-    $('#wsStatus').textContent = 'DISCONNECTED';
+    $('#wsStatus').textContent = 'Disconnected';
     $('#wsStatus').className = 'ws-status disconnected';
-    $('#wsDot').style.background = 'var(--red)';
+    $('#wsDot').style.background = 'var(--err)';
     addLog('Dashboard disconnected — reconnecting...');
     setTimeout(connect, 3000);
   };
