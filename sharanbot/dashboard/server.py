@@ -321,12 +321,11 @@ class DashboardServer:
 
             ptype = self._detect_project_type(entry)
 
+            # Fast file count — top-level only to avoid slow rglob on large dirs
             try:
                 file_count = sum(
-                    1 for f in entry.rglob("*")
-                    if f.is_file()
-                    and "node_modules" not in f.parts
-                    and ".git" not in f.parts
+                    1 for f in entry.iterdir()
+                    if f.is_file() and not f.name.startswith(".")
                 )
             except OSError:
                 file_count = 0
@@ -335,7 +334,7 @@ class DashboardServer:
                 "name": entry.name,
                 "type": ptype,
                 "path": str(entry),
-                "files": min(file_count, 9999),
+                "files": file_count,
             })
 
         return projects
