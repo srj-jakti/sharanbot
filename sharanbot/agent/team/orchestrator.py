@@ -47,8 +47,8 @@ class TeamOrchestrator:
     4. ``steer_team(team_id, instruction)`` → modify a running team
     """
 
-    # Per-task timeout in seconds — prevents hung subagents from blocking the team
-    DEFAULT_TASK_TIMEOUT = 600  # 10 minutes
+    # Per-task timeout in seconds — generous to allow complex autonomous work
+    DEFAULT_TASK_TIMEOUT = 3600  # 60 minutes
 
     def __init__(
         self,
@@ -411,7 +411,12 @@ class TeamOrchestrator:
         system_prompt = (
             agent_profile.system_prompt
             if agent_profile and agent_profile.system_prompt
-            else f"You are a specialist agent ({profile}). Complete the assigned task thoroughly."
+            else (
+                f"You are a specialist agent ({profile}). Complete the assigned task thoroughly. "
+                f"You run autonomously with no iteration limit. "
+                f"NEVER claim completion without verification. "
+                f"If something fails, report it honestly."
+            )
         )
 
         messages = [
@@ -422,8 +427,13 @@ class TeamOrchestrator:
         iteration = 0
         final_result = None
 
-        while iteration < max_iter:
+        # Autonomous loop — no hard iteration cap for team tasks
+        while True:
             iteration += 1
+
+            # Soft checkpoint every 25 iterations
+            if iteration % 25 == 0:
+                logger.info("Team task {} checkpoint: iteration {}", agent_id, iteration)
             response = await self.provider.chat_with_retry(
                 messages=messages,
                 tools=tools.get_definitions(),

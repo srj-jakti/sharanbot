@@ -32,15 +32,20 @@ except ImportError:
 class DashboardServer:
     """Lightweight HTTP + WebSocket server for the SharanBot dashboard."""
 
+    # Paths exempt from bearer token auth
+    _PUBLIC_PATHS = frozenset({"/", "/api/health", "/ws"})
+
     def __init__(
         self,
         host: str = "127.0.0.1",
         port: int = 18791,
         agent_loop: Any = None,
+        auth_token: str | None = None,
     ):
         self.host = host
         self.port = port
         self.agent = agent_loop
+        self.auth_token = auth_token
         self._app: Any = None
         self._runner: Any = None
         self._ws_clients: list[Any] = []
@@ -52,7 +57,11 @@ class DashboardServer:
             logger.warning("Dashboard requires aiohttp — install with: pip install aiohttp")
             return
 
-        self._app = web.Application()
+        middlewares = []
+        if self.auth_token:
+            middlewares.append(self._auth_middleware)
+
+        self._app = web.Application(middlewares=middlewares)
         self._app.router.add_get("/", self._handle_index)
         self._app.router.add_get("/api/status", self._handle_status)
         self._app.router.add_get("/api/services", self._handle_services)
@@ -75,8 +84,17 @@ class DashboardServer:
 
         # Start periodic broadcast to WebSocket clients
         self._broadcast_task = asyncio.create_task(self._periodic_broadcast())
+        self._broadcast_task.add_done_callback(self._log_task_exception)
 
         logger.info("Dashboard started at http://{}:{}", self.host, self.port)
+
+    @staticmethod
+    def _log_task_exception(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Dashboard broadcast task failed: {}", exc)
 
     async def stop(self) -> None:
         """Stop the dashboard server."""
@@ -86,6 +104,24 @@ class DashboardServer:
             await ws.close()
         if self._runner:
             await self._runner.cleanup()
+
+    # ------------------------------------------------------------------
+    # Auth middleware
+    # ------------------------------------------------------------------
+
+    @web.middleware
+    async def _auth_middleware(self, request: Any, handler: Any) -> Any:
+        """Require bearer token for non-public API paths."""
+        if request.path in self._PUBLIC_PATHS:
+            return await handler(request)
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header == f"Bearer {self.auth_token}":
+            return await handler(request)
+        return web.json_response(
+            {"error": "Unauthorized"},
+            status=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # ------------------------------------------------------------------
     # API endpoints
@@ -139,10 +175,11 @@ class DashboardServer:
         return web.json_response({"status": "no recovery engine"})
 
     async def _handle_vault_keys(self, request: Any) -> Any:
-        """List vault credential keys (not values)."""
+        """List vault credential key count (not names or values, to prevent info disclosure)."""
         if hasattr(self.agent, "vault") and self.agent.vault:
-            return web.json_response({"keys": self.agent.vault.list_keys()})
-        return web.json_response({"keys": []})
+            key_count = len(self.agent.vault.list_keys())
+            return web.json_response({"count": key_count, "message": "Key names hidden for security"})
+        return web.json_response({"count": 0})
 
     async def _handle_projects(self, request: Any) -> Any:
         """List workspace projects (directories with package.json, requirements.txt, etc.)."""
@@ -168,8 +205,8 @@ class DashboardServer:
                     "type": "dir" if entry.is_dir() else "file",
                     "size": entry.stat().st_size if entry.is_file() else 0,
                 })
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.debug("Dashboard: failed listing project files for {}: {}", name, exc)
         return web.json_response({"project": name, "files": files})
 
     async def _handle_project_file_content(self, request: Any) -> Any:
@@ -181,8 +218,10 @@ class DashboardServer:
             return web.json_response({"error": "Project not found"}, status=404)
 
         target = (project_dir / file_path).resolve()
-        # Path traversal protection
-        if not str(target).startswith(str(project_dir.resolve())):
+        # Path traversal protection — use relative_to instead of string prefix
+        try:
+            target.relative_to(project_dir.resolve())
+        except ValueError:
             return web.json_response({"error": "Access denied"}, status=403)
         if not target.is_file():
             return web.json_response({"error": "File not found"}, status=404)
@@ -261,23 +300,23 @@ class DashboardServer:
             try:
                 skills = self.agent.context.skills.list_skills(filter_unavailable=False)
                 data["skills"] = [{"name": s["name"], "source": s.get("source", "builtin")} for s in skills]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Dashboard: failed listing skills: {}", exc)
 
         # Agent profiles (plugins/agents/*.yaml)
         if hasattr(self.agent, "profile_registry"):
             try:
                 for p in self.agent.profile_registry.list_profiles():
                     data["profiles"].append({"name": p.name, "display": p.display_name})
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Dashboard: failed listing profiles: {}", exc)
 
         # Pipelines
         if hasattr(self.agent, "team_orchestrator") and hasattr(self.agent.team_orchestrator, "pipelines"):
             try:
                 data["pipelines"] = self.agent.team_orchestrator.pipelines.list_templates()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Dashboard: failed listing pipelines: {}", exc)
 
         # Plugins (scan plugins dir)
         plugins_dir = getattr(self.agent, "workspace", None)
@@ -289,8 +328,8 @@ class DashboardServer:
                         if entry.is_dir() and not entry.name.startswith("."):
                             plugin_files = [f.name for f in entry.iterdir() if f.is_file()]
                             data["plugins"].append({"name": entry.name, "files": plugin_files})
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Dashboard: failed scanning plugins: {}", exc)
 
         return web.json_response(data)
 
@@ -358,8 +397,8 @@ class DashboardServer:
             pkg = {}
             try:
                 pkg = json.loads((path / "package.json").read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Dashboard: failed reading package.json in {}: {}", path, exc)
             deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
             if "expo" in deps:
                 return "expo"
@@ -424,7 +463,7 @@ class DashboardServer:
                         cmd = json.loads(msg.data)
                         await self._handle_ws_command(ws, cmd)
                     except json.JSONDecodeError:
-                        pass
+                        logger.debug("Dashboard: invalid JSON in WebSocket command")
                 elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSE):
                     break
         finally:
@@ -535,8 +574,8 @@ class DashboardServer:
         if hasattr(self.agent, "context") and hasattr(self.agent.context, "skills"):
             try:
                 integrations["skills"] = len(self.agent.context.skills.list_skills(filter_unavailable=False))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Dashboard: failed counting skills for snapshot: {}", exc)
         snapshot["integrations"] = integrations
 
         return snapshot

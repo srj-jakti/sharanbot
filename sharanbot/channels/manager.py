@@ -53,7 +53,7 @@ class ChannelManager:
                 self.channels[name] = channel
                 logger.info("{} channel enabled", cls.display_name)
             except Exception as e:
-                logger.warning("{} channel not available: {}", name, e)
+                logger.warning("{} channel not available ({}): {}", name, type(e).__name__, e)
 
         self._validate_allow_from()
 

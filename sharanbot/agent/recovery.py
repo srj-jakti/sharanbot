@@ -33,6 +33,7 @@ class ErrorCategory(str, Enum):
     TIMEOUT = "timeout"
     PERMISSION_ERROR = "permission_error"
     REPEATED_FAILURE = "repeated_failure"
+    IMPORT_ERROR = "import_error"
 
 
 @dataclass
@@ -66,18 +67,64 @@ class RecoveryEngine:
     - Track circuit breaker state per component
     - Record outcomes in LearningStore for future reference
     - Adapt cooldown/retry strategies based on learned patterns
+    - Auto-install missing packages via package name mapping
     """
 
-    # Pattern → category mapping for error classification
-    _ERROR_PATTERNS: list[tuple[str, ErrorCategory]] = [
-        (r"permission\s*denied|access.*denied|EACCES|EPERM|not permitted|requires elevation|requires admin|run as admin", ErrorCategory.PERMISSION_ERROR),
-        (r"429|rate.?limit|too many requests|quota", ErrorCategory.RATE_LIMIT),
-        (r"timeout|timed?\s*out|deadline exceeded", ErrorCategory.TIMEOUT),
-        (r"mcp|model context protocol|server disconnected", ErrorCategory.MCP_FAILURE),
-        (r"500|502|503|504|internal server|bad gateway|service unavailable", ErrorCategory.API_ERROR),
-        (r"connection\s*(refused|reset|error)|ECONNREFUSED|ECONNRESET", ErrorCategory.API_ERROR),
-        (r"stuck|deadlock|not responding|hang", ErrorCategory.STUCK_AGENT),
-        (r"worker.*crash|worker.*fail|process.*exit", ErrorCategory.STUCK_WORKER),
+    # Common import-name → pip-package mapping for auto-install
+    PACKAGE_NAME_MAP: dict[str, str] = {
+        "cv2": "opencv-python",
+        "PIL": "Pillow",
+        "sklearn": "scikit-learn",
+        "yaml": "PyYAML",
+        "bs4": "beautifulsoup4",
+        "attr": "attrs",
+        "dateutil": "python-dateutil",
+        "dotenv": "python-dotenv",
+        "gi": "PyGObject",
+        "lxml": "lxml",
+        "magic": "python-magic",
+        "serial": "pyserial",
+        "usb": "pyusb",
+        "wx": "wxPython",
+        "skimage": "scikit-image",
+        "jose": "python-jose",
+        "jwt": "PyJWT",
+        "Crypto": "pycryptodome",
+        "docx": "python-docx",
+        "pptx": "python-pptx",
+        "xlrd": "xlrd",
+        "openpyxl": "openpyxl",
+        "bson": "pymongo",
+        "pymongo": "pymongo",
+        "redis": "redis",
+        "celery": "celery",
+        "flask": "flask",
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        "httpx": "httpx",
+        "aiohttp": "aiohttp",
+        "numpy": "numpy",
+        "pandas": "pandas",
+        "matplotlib": "matplotlib",
+        "seaborn": "seaborn",
+        "torch": "torch",
+        "tensorflow": "tensorflow",
+        "transformers": "transformers",
+        "scipy": "scipy",
+        "sympy": "sympy",
+    }
+
+    # Pattern → category mapping for error classification (pre-compiled for performance)
+    _ERROR_PATTERNS: list[tuple[re.Pattern[str], ErrorCategory]] = [
+        (re.compile(r"permission\s*denied|access.*denied|EACCES|EPERM|not permitted|requires elevation|requires admin|run as admin", re.IGNORECASE), ErrorCategory.PERMISSION_ERROR),
+        (re.compile(r"ModuleNotFoundError|ImportError|No module named", re.IGNORECASE), ErrorCategory.IMPORT_ERROR),
+        (re.compile(r"429|rate.?limit|too many requests|quota", re.IGNORECASE), ErrorCategory.RATE_LIMIT),
+        (re.compile(r"timeout|timed?\s*out|deadline exceeded", re.IGNORECASE), ErrorCategory.TIMEOUT),
+        (re.compile(r"mcp|model context protocol|server disconnected", re.IGNORECASE), ErrorCategory.MCP_FAILURE),
+        (re.compile(r"500|502|503|504|internal server|bad gateway|service unavailable", re.IGNORECASE), ErrorCategory.API_ERROR),
+        (re.compile(r"connection\s*(refused|reset|error)|ECONNREFUSED|ECONNRESET", re.IGNORECASE), ErrorCategory.API_ERROR),
+        (re.compile(r"stuck|deadlock|not responding|hang", re.IGNORECASE), ErrorCategory.STUCK_AGENT),
+        (re.compile(r"worker.*crash|worker.*fail|process.*exit", re.IGNORECASE), ErrorCategory.STUCK_WORKER),
     ]
 
     # Max failures before circuit opens per category
@@ -90,6 +137,7 @@ class RecoveryEngine:
         ErrorCategory.TIMEOUT: 3,
         ErrorCategory.PERMISSION_ERROR: 2,
         ErrorCategory.REPEATED_FAILURE: 3,
+        ErrorCategory.IMPORT_ERROR: 5,
     }
 
     def __init__(self, learning: LearningStore, agent: AgentLoop | None = None):
@@ -111,8 +159,8 @@ class RecoveryEngine:
     def classify_error(self, error: str | Exception) -> ErrorCategory:
         """Classify an error into a recovery category."""
         text = str(error).lower()
-        for pattern, category in self._ERROR_PATTERNS:
-            if re.search(pattern, text, re.IGNORECASE):
+        for compiled_pattern, category in self._ERROR_PATTERNS:
+            if compiled_pattern.search(text):
                 return category
         return ErrorCategory.TOOL_ERROR  # Default
 
@@ -168,8 +216,12 @@ class RecoveryEngine:
                 f"{category.value}:{component}",
                 default=circuit.cooldown,
             )
-            # Exponential backoff capped at 5 minutes
-            circuit.cooldown = min(learned * 1.5, 300)
+            # Guard against NaN, Inf, or negative values
+            import math
+            if not isinstance(learned, (int, float)) or math.isnan(learned) or math.isinf(learned) or learned < 0:
+                learned = circuit.cooldown
+            # Exponential backoff capped between 1s and 5 minutes
+            circuit.cooldown = min(max(learned * 1.5, 1.0), 300)
             circuit.half_open_at = time.time() + circuit.cooldown
             logger.warning(
                 "Circuit OPEN for {} ({}x failures), cooldown {:.0f}s",
@@ -209,6 +261,11 @@ class RecoveryEngine:
 
         self._active_recoveries.add(recovery_key)
         try:
+            # Diagnose root cause via LLM (non-blocking best-effort)
+            diagnosis = await self.diagnose(error, component, category, context)
+            if diagnosis:
+                logger.info("Root cause diagnosis for {}: {}", signature, diagnosis)
+
             # Check learning store for known fix
             known_fix = self.learning.get_successful_fix(signature)
             if known_fix:
@@ -272,6 +329,68 @@ class RecoveryEngine:
             ErrorCategory.REPEATED_FAILURE: 1.0,
         }.get(category, 3.0)
 
+    async def diagnose(
+        self,
+        error: str | Exception,
+        component: str,
+        category: ErrorCategory,
+        context: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Use LLM to diagnose the root cause of a failure.
+
+        Returns a short diagnosis string, or None if unavailable.
+        """
+        if not self.agent:
+            return None
+
+        # Check learning store first — skip LLM if we already know this error
+        sig = self.make_error_signature(category, component, error)
+        known = self.learning.get_successful_fix(sig)
+        if known:
+            return f"Known pattern — previous fix: {known}"
+
+        # Build a concise prompt for the LLM
+        error_text = str(error)[:500]
+        ctx_snippet = ""
+        if context:
+            ctx_snippet = "\n".join(
+                f"  {k}: {str(v)[:120]}" for k, v in list(context.items())[:6]
+            )
+
+        prompt = (
+            "You are a systems diagnostician. Analyze this error and reply "
+            "with ONLY a 1-2 sentence root cause diagnosis.\n\n"
+            f"Component: {component}\n"
+            f"Category: {category.value}\n"
+            f"Error: {error_text}\n"
+        )
+        if ctx_snippet:
+            prompt += f"Context:\n{ctx_snippet}\n"
+
+        try:
+            provider = getattr(self.agent, "provider", None)
+            if provider is None:
+                return None
+            response = await provider.chat(
+                [{"role": "user", "content": prompt}],
+                model=getattr(self.agent, "model", None),
+            )
+            diagnosis = (response or "").strip()[:300]
+            if diagnosis:
+                # Persist diagnosis for future look-ups
+                self.learning.record(
+                    category=category.value,
+                    error_signature=sig,
+                    description=f"Diagnosis: {diagnosis}",
+                    fix_applied="diagnosed",
+                    success=False,
+                    metadata={"diagnosis": diagnosis, "component": component},
+                )
+            return diagnosis or None
+        except Exception as exc:
+            logger.debug("Diagnosis LLM call failed (non-fatal): {}", exc)
+            return None
+
     # ------------------------------------------------------------------
     # Default Recovery Handlers
     # ------------------------------------------------------------------
@@ -321,7 +440,12 @@ class RecoveryEngine:
             category=ErrorCategory.PERMISSION_ERROR,
             description="Retry with --user flag or elevated permissions",
         ))
-
+        self._register(ErrorCategory.IMPORT_ERROR, RecoveryAction(
+            name="auto_install_package",
+            handler=self._recover_import_error,
+            category=ErrorCategory.IMPORT_ERROR,
+            description="Auto-install missing package via pip",
+        ))
         # Repetition tracker for detecting stuck command loops
         self._recent_commands: list[str] = []  # rolling window of recent exec commands
         self._REPEAT_WINDOW = 6  # how many recent commands to track
@@ -429,6 +553,47 @@ class RecoveryEngine:
             success=True,
         )
         return True
+
+    async def _recover_import_error(
+        self, component: str, error: Any, context: dict[str, Any],
+    ) -> bool:
+        """Handle ImportError/ModuleNotFoundError: auto-install the missing package."""
+        error_str = str(error)
+        # Extract module name from "No module named 'xxx'" or "ModuleNotFoundError: xxx"
+        match = re.search(r"No module named ['\"]?([a-zA-Z0-9_]+)", error_str)
+        if not match:
+            match = re.search(r"cannot import name .+ from ['\"]?([a-zA-Z0-9_]+)", error_str)
+        if not match:
+            return False
+
+        module_name = match.group(1)
+        # Look up the pip package name
+        pip_name = self.PACKAGE_NAME_MAP.get(module_name, module_name)
+
+        logger.info("Auto-installing missing package: {} (pip: {})", module_name, pip_name)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "pip", "install", "--user", pip_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+            if proc.returncode == 0:
+                self.learning.record(
+                    category="import_error",
+                    error_signature=f"import_error:{module_name}",
+                    description=f"Missing module: {module_name}",
+                    fix_applied=f"pip install --user {pip_name}",
+                    success=True,
+                )
+                logger.info("Successfully installed {}", pip_name)
+                return True
+            else:
+                logger.warning("Failed to install {}: {}", pip_name, stderr.decode()[:200])
+                return False
+        except (asyncio.TimeoutError, FileNotFoundError, OSError) as e:
+            logger.warning("Package install error: {}", e)
+            return False
 
     def track_command(self, command: str) -> str | None:
         """Track an exec command and detect repetitive stuck loops.

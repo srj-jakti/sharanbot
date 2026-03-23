@@ -1,5 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+// Stdio MCP reserves stdout for JSONRPC — redirect all console output to stderr
+// so log messages don't corrupt the protocol stream.
+console.log   = (...args: unknown[]) => console.error(...args);
+console.info  = (...args: unknown[]) => console.error(...args);
+console.debug = (...args: unknown[]) => console.error(...args);
+console.warn  = (...args: unknown[]) => console.error(...args);
+
 import { z } from 'zod';
 import { apiCall, logActivity } from './api-client.js';
 import { API_PORT } from '../utils/constants';

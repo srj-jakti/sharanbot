@@ -178,12 +178,8 @@ class ComputerTool(Tool):
         return [
             {"type": "text", "text": f"Screenshot taken ({len(png_data)} bytes). Saved to {filepath.name}"},
             {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": b64,
-                },
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
             },
         ]
 

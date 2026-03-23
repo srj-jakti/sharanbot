@@ -6,6 +6,11 @@ giving the agent a persistent, visible, security-hardened Electron browser.
 
 Falls back gracefully: if tandem-browser is not reachable the tool reports an
 error rather than crashing.
+
+Note: This is the **agent-integrated** version (inherits ``Tool``, async
+``execute()`` dispatcher).  A separate standalone implementation lives at
+``sharanbot/tools/tandem_browser.py`` for CLI scripts and demos that need
+direct method calls without the agent framework.
 """
 
 from __future__ import annotations

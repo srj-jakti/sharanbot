@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from sharanbot.utils.helpers import atomic_write
+
 from loguru import logger
 
 
@@ -301,7 +303,7 @@ class ServiceManager:
                 "status": e.status,
             })
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        self._state_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        atomic_write(self._state_path, json.dumps(data, indent=2))
 
     def _load_state(self) -> None:
         """Load service registry from disk."""

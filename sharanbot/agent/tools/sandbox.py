@@ -147,6 +147,9 @@ class SandboxTool(Tool):
             "--cpus", "1.0",
             "--network", "bridge",
             "--security-opt", "no-new-privileges",
+            "--cap-drop", "ALL",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,size=256m",
             "--pids-limit", "256",
             image,
             "sleep", "3600",  # Keep alive for 1 hour
@@ -201,7 +204,9 @@ class SandboxTool(Tool):
         combined = output + ("\n--- STDERR ---\n" + err_output if err_output else "")
 
         if len(combined) > MAX_OUTPUT_LEN:
-            combined = combined[:MAX_OUTPUT_LEN] + "\n\n... [output truncated]"
+            separator = f"\n\n... ({len(combined) - MAX_OUTPUT_LEN:,} chars truncated) ...\n\n"
+            half = (MAX_OUTPUT_LEN - len(separator)) // 2
+            combined = combined[:half] + separator + combined[-half:]
 
         exit_code = proc.returncode
         return f"Exit code: {exit_code}\n\n{combined}"

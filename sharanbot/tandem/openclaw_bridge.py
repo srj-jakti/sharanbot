@@ -51,8 +51,21 @@ class OpenClawBridge:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    @staticmethod
+    @web.middleware
+    async def _cors_middleware(request: web.Request, handler):
+        """Add CORS headers so the Electron shell (file:// origin) can fetch."""
+        if request.method == "OPTIONS":
+            resp = web.Response(status=204)
+        else:
+            resp = await handler(request)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return resp
+
     async def start(self) -> None:
-        self._app = web.Application()
+        self._app = web.Application(middlewares=[self._cors_middleware])
         self._app.router.add_get("/v1/status", self._handle_status)
         self._app.router.add_get("/config/openclaw-connect", self._handle_connect_params)
         self._app.router.add_get("/ws", self._handle_ws)
@@ -134,12 +147,22 @@ class OpenClawBridge:
         self._ws_clients.append(ws)
         logger.info("OpenClaw Bridge: client connected")
 
-        # Send connect.challenge
+        # Send connect.challenge with embedded connect params so the client
+        # does NOT need an HTTP fetch (avoids CORS/file:// origin issues).
         nonce = str(uuid.uuid4())
         await ws.send_json({
             "type": "event",
             "event": "connect.challenge",
-            "payload": {"nonce": nonce},
+            "payload": {
+                "nonce": nonce,
+                "connectParams": {
+                    "token": "sharanbot-bridge-token",
+                    "nonce": nonce,
+                    "deviceId": "sharanbot-agent",
+                    "deviceName": "SharanBot",
+                    "platform": "sharanbot",
+                },
+            },
         })
 
         try:
@@ -160,14 +183,18 @@ class OpenClawBridge:
         except json.JSONDecodeError:
             return
 
-        if data.get("type") != "req":
+        msg_type = data.get("type", "")
+        if msg_type != "req":
+            logger.debug("OpenClaw Bridge: ignoring non-req message type={}", msg_type)
             return
 
         msg_id = data.get("id", "")
         method = data.get("method", "")
         params = data.get("params", {})
+        logger.debug("OpenClaw Bridge: req method={}", method)
 
         if method == "connect":
+            logger.info("OpenClaw Bridge: client authenticated (device={})" , params.get("deviceId", "unknown"))
             await ws.send_json({
                 "type": "res",
                 "id": msg_id,

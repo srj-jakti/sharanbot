@@ -42,9 +42,18 @@ class TaskDAG:
         self._execution_order: list[str] | None = None
 
     def add_task(self, task: TaskNode) -> None:
-        """Add a task node to the DAG."""
+        """Add a task node to the DAG.
+
+        Raises ValueError if adding this task would create a cycle.
+        """
         self.tasks[task.id] = task
         self._execution_order = None  # invalidate cache
+        try:
+            self._check_cycles()
+        except ValueError:
+            # Roll back on cycle
+            self.tasks.pop(task.id, None)
+            raise
 
     def remove_task(self, task_id: str) -> None:
         self.tasks.pop(task_id, None)
@@ -124,26 +133,39 @@ class TaskDAG:
         return self.tasks.get(task_id)
 
     def topological_order(self) -> list[str]:
-        """Return task IDs in topological order."""
+        """Return task IDs in topological order (Kahn's algorithm).
+
+        Raises ValueError if a cycle is detected.
+        """
         if self._execution_order is not None:
             return self._execution_order
 
-        visited: set[str] = set()
+        # Build in-degree map (only count edges within known tasks)
+        in_degree: dict[str, int] = {tid: 0 for tid in self.tasks}
+        for task in self.tasks.values():
+            for dep in task.depends_on:
+                if dep in self.tasks:
+                    in_degree[task.id] = in_degree.get(task.id, 0) + 1
+
+        # Start with zero-in-degree nodes
+        queue = [tid for tid, deg in in_degree.items() if deg == 0]
         order: list[str] = []
 
-        def visit(tid: str) -> None:
-            if tid in visited:
-                return
-            visited.add(tid)
-            task = self.tasks.get(tid)
-            if task:
-                for dep in task.depends_on:
-                    if dep in self.tasks:
-                        visit(dep)
-                order.append(tid)
+        while queue:
+            tid = queue.pop(0)
+            order.append(tid)
+            # Reduce in-degree for tasks that depend on this one
+            for task in self.tasks.values():
+                if tid in task.depends_on and task.id in in_degree:
+                    in_degree[task.id] -= 1
+                    if in_degree[task.id] == 0:
+                        queue.append(task.id)
 
-        for tid in self.tasks:
-            visit(tid)
+        if len(order) != len(self.tasks):
+            missing = set(self.tasks) - set(order)
+            raise ValueError(
+                f"Circular dependency detected involving tasks: {missing}"
+            )
 
         self._execution_order = order
         return order
@@ -184,6 +206,13 @@ class TaskDAG:
             deps = item.get("depends_on", [])
             # Strip invalid dependency references
             valid_deps = [d for d in deps if d in task_ids]
+            stripped = set(deps) - set(valid_deps)
+            if stripped:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Task '%s': stripped invalid dependency refs: %s",
+                    item["id"], stripped,
+                )
             dag.add_task(TaskNode(
                 id=item["id"],
                 description=item.get("description", ""),

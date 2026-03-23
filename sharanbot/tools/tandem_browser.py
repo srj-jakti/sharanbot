@@ -1,6 +1,13 @@
 """
-Tandem Browser Tool for SharanBot
+Tandem Browser Tool for SharanBot — standalone implementation.
+
 Provides secure, visual web browsing capabilities with human-in-the-loop controls.
+This standalone version uses direct method calls (``navigate()``, ``click()``, etc.)
+without inheriting from the agent ``Tool`` base class.
+
+Note: The agent-integrated version lives at ``sharanbot/agent/tools/tandem_browser.py``
+and is used by the agent loop / subagent framework.  Both wrap the same Tandem Browser
+REST API; this file is for scripts, tests, and demos that operate outside the agent.
 """
 
 import os

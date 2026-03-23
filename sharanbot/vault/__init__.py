@@ -16,7 +16,7 @@ from typing import Any
 from loguru import logger
 
 # Fernet is in the stdlib-adjacent cryptography package.
-# We fall back to a simple XOR obfuscation if cryptography is unavailable.
+# If cryptography is unavailable, vault operations will raise RuntimeError.
 try:
     from cryptography.fernet import Fernet
 
@@ -128,21 +128,26 @@ class Vault:
 
     def _encrypt(self, plaintext: str) -> str:
         assert self._key is not None
-        if _HAS_FERNET:
-            f = Fernet(self._key)
-            return f.encrypt(plaintext.encode()).decode()
-        # Fallback: XOR obfuscation (not production-grade)
-        return base64.urlsafe_b64encode(
-            bytes(a ^ b for a, b in zip(plaintext.encode(), (self._key * ((len(plaintext) // len(self._key)) + 1))))
-        ).decode()
+        if not _HAS_FERNET:
+            raise RuntimeError(
+                "Vault encryption requires the 'cryptography' package. "
+                "Install it with: pip install cryptography"
+            )
+        f = Fernet(self._key)
+        return f.encrypt(plaintext.encode()).decode()
 
     def _decrypt(self, ciphertext: str) -> str:
         assert self._key is not None
-        if _HAS_FERNET:
+        if not _HAS_FERNET:
+            raise RuntimeError(
+                "Vault decryption requires the 'cryptography' package. "
+                "Install it with: pip install cryptography"
+            )
+        try:
             f = Fernet(self._key)
             return f.decrypt(ciphertext.encode()).decode()
-        raw = base64.urlsafe_b64decode(ciphertext)
-        return bytes(a ^ b for a, b in zip(raw, (self._key * ((len(raw) // len(self._key)) + 1)))).decode()
+        except Exception as e:
+            raise ValueError(f"Vault decryption failed (corrupted or wrong password): {e}") from e
 
     # ------------------------------------------------------------------
     # Persistence

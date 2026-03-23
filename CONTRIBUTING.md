@@ -122,6 +122,31 @@ In practice:
 - Prefer focused patches over broad rewrites
 - If a new abstraction is introduced, it should clearly reduce complexity rather than move it around
 
+## Import Dependency Order
+
+To prevent circular imports as the project grows, modules should follow this
+layered import order — each layer may import from layers **below** it but never
+from layers above:
+
+```
+Layer 5 — Entry-points  (cli/, dashboard/, gateway)
+Layer 4 — Agent core    (agent/loop, agent/subagent, agent/team/)
+Layer 3 — Services      (bus/, cron/, heartbeat/, session/, workers/)
+Layer 2 — Agent support (agent/context, agent/memory, agent/recovery,
+                         agent/learning, agent/tool_manager,
+                         agent/tools/*, tools/*)
+Layer 1 — Config & infra(config/, security/, vault/, providers/)
+Layer 0 — Pure utilities(utils/, channels/base, bus/events)
+```
+
+**Rules of thumb:**
+
+- Never import from a higher layer into a lower one.
+- Shared data-classes and type definitions belong in Layer 0 or Layer 1.
+- If you need an object from a higher layer inside a lower one, accept it as a
+  constructor/function parameter instead of importing it directly.
+- Use `ruff` (`I` rules) to keep import blocks sorted.
+
 ## Questions?
 
 If you have questions, ideas, or half-formed insights, you are warmly welcome here.

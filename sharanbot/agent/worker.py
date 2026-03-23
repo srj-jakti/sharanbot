@@ -20,6 +20,15 @@ from loguru import logger
 from sharanbot.agent.worker_registry import WorkerTypeRegistry
 
 
+def _log_task_exception(task: asyncio.Task, label: str) -> None:
+    """Log unhandled exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("Unhandled exception in {}: {}", label, exc)
+
+
 # ---------------------------------------------------------------------------
 # Worker state
 # ---------------------------------------------------------------------------
@@ -183,6 +192,9 @@ class WorkerManager:
         # Start background reader for stdout
         worker.reader_task = asyncio.create_task(
             self._read_output(worker),
+        )
+        worker.reader_task.add_done_callback(
+            lambda t: _log_task_exception(t, f"worker reader [{worker_id}]")
         )
 
         # Send the initial prompt

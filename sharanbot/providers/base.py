@@ -129,6 +129,21 @@ class LLMProvider(ABC):
                     ):
                         changed = True
                         continue
+                    # Convert Anthropic-format image blocks to OpenAI format
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == "image"
+                        and isinstance(item.get("source"), dict)
+                    ):
+                        source = item["source"]
+                        mime = source.get("media_type", "image/png")
+                        data = source.get("data", "")
+                        new_items.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{data}"},
+                        })
+                        changed = True
+                        continue
                     if isinstance(item, dict) and "_meta" in item:
                         new_items.append({k: v for k, v in item.items() if k != "_meta"})
                         changed = True
@@ -202,7 +217,7 @@ class LLMProvider(ABC):
 
     @staticmethod
     def _strip_image_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-        """Replace image_url blocks with text placeholder. Returns None if no images found."""
+        """Replace image_url/image blocks with text placeholder. Returns None if no images found."""
         found = False
         result = []
         for msg in messages:
@@ -210,7 +225,7 @@ class LLMProvider(ABC):
             if isinstance(content, list):
                 new_content = []
                 for b in content:
-                    if isinstance(b, dict) and b.get("type") == "image_url":
+                    if isinstance(b, dict) and b.get("type") in ("image_url", "image"):
                         path = (b.get("_meta") or {}).get("path", "")
                         placeholder = f"[image: {path}]" if path else "[image omitted]"
                         new_content.append({"type": "text", "text": placeholder})

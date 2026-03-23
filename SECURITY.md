@@ -216,8 +216,8 @@ If you suspect a security breach:
 - Failed authentication attempt logging
 
 ✅ **Resource Protection**
-- Command execution timeouts (60s default)
-- Output truncation (10KB limit)
+- Command execution timeouts (180s default, max 600s)
+- Output truncation (30KB limit, head + tail preserved)
 - HTTP request timeouts (10-30s)
 
 ✅ **Secure Communication**

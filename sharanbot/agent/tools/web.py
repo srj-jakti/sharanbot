@@ -242,10 +242,25 @@ class WebFetchTool(Tool):
 
         # Detect and fetch images directly to avoid Jina's textual image captioning
         try:
-            async with httpx.AsyncClient(proxy=self.proxy, follow_redirects=True, max_redirects=MAX_REDIRECTS, timeout=15.0) as client:
-                async with client.stream("GET", url, headers={"User-Agent": USER_AGENT}) as r:
-                    from sharanbot.security.network import validate_resolved_url
+            from sharanbot.security.network import validate_resolved_url
 
+            def _check_redirect(response: httpx.Response) -> None:
+                """Validate each redirect target against SSRF blocklists."""
+                if response.is_redirect and "location" in response.headers:
+                    loc = response.headers["location"]
+                    if loc.startswith(("http://", "https://")):
+                        ok, err = _validate_url_safe(loc)
+                        if not ok:
+                            raise httpx.TooManyRedirects(f"Redirect blocked: {err}")
+
+            async with httpx.AsyncClient(
+                proxy=self.proxy,
+                follow_redirects=True,
+                max_redirects=MAX_REDIRECTS,
+                timeout=15.0,
+                event_hooks={"response": [_check_redirect]},
+            ) as client:
+                async with client.stream("GET", url, headers={"User-Agent": USER_AGENT}) as r:
                     redir_ok, redir_err = validate_resolved_url(str(r.url))
                     if not redir_ok:
                         return json.dumps({"error": f"Redirect blocked: {redir_err}", "url": url}, ensure_ascii=False)

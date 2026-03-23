@@ -119,7 +119,7 @@ class ExecToolConfig(Base):
     """Shell exec tool configuration."""
 
     enable: bool = True
-    timeout: int = 60
+    timeout: int = 180
     path_append: str = ""
 
 class MCPServerConfig(Base):
@@ -129,6 +129,7 @@ class MCPServerConfig(Base):
     command: str = ""  # Stdio: command to run (e.g. "npx")
     args: list[str] = Field(default_factory=list)  # Stdio: command arguments
     env: dict[str, str] = Field(default_factory=dict)  # Stdio: extra env vars
+    cwd: str = ""  # Stdio: working directory for the subprocess
     url: str = ""  # HTTP/SSE: endpoint URL
     headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE: custom headers
     tool_timeout: int = 30  # seconds before a tool call is cancelled
@@ -141,6 +142,7 @@ class ToolsConfig(Base):
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
+    browser_backend: str = "auto"  # "auto" | "tandem" | "playwright"
 
 
 class WorkerConfig(Base):
@@ -155,6 +157,7 @@ class DashboardConfig(Base):
     enable: bool = True
     host: str = "127.0.0.1"
     port: int = 18791
+    auth_token: str | None = None  # Bearer token for API auth; None = no auth
 
 
 class Config(BaseSettings):

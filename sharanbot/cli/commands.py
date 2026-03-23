@@ -591,6 +591,7 @@ def gateway(
         worker_type_registry=worker_type_registry,
         agent_profile_registry=agent_profile_registry,
         channel_manager=channels,
+        browser_backend=config.tools.browser_backend,
     )
 
     # Set cron callback (needs agent)
@@ -640,9 +641,6 @@ def gateway(
                 ))
         return response
     cron.on_job = on_cron_job
-
-    # Create channel manager
-    channels = ChannelManager(config, bus)
 
     def _pick_heartbeat_target() -> tuple[str, str]:
         """Pick a routable channel/chat target for heartbeat-triggered messages."""
@@ -728,6 +726,7 @@ def gateway(
             host=config.dashboard.host,
             port=config.dashboard.port,
             agent_loop=agent,
+            auth_token=config.dashboard.auth_token,
         )
         dashboard_url = f"http://{config.dashboard.host}:{config.dashboard.port}"
         console.print(f"[green]✓[/green] Dashboard: {dashboard_url}")
@@ -850,6 +849,7 @@ def agent(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
+        browser_backend=config.tools.browser_backend,
     )
 
     # Shared reference for progress callbacks

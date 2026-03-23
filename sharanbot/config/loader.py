@@ -44,8 +44,8 @@ def load_config(config_path: Path | None = None) -> Config:
             data = _migrate_config(data)
             return Config.model_validate(data)
         except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
-            logger.warning(f"Failed to load config from {path}: {e}")
-            logger.warning("Using default configuration.")
+            logger.error(f"Config validation failed for {path}: {e}")
+            logger.warning("Falling back to default configuration — review your config file.")
 
     return Config()
 

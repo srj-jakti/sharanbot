@@ -30,10 +30,11 @@ def _fake_mcp_module(
     mod.types = SimpleNamespace(TextContent=_FakeTextContent)
 
     class _FakeStdioServerParameters:
-        def __init__(self, command: str, args: list[str], env: dict | None = None) -> None:
+        def __init__(self, command: str, args: list[str], env: dict | None = None, cwd: str | None = None) -> None:
             self.command = command
             self.args = args
             self.env = env
+            self.cwd = cwd
 
     class _FakeClientSession:
         def __init__(self, _read: object, _write: object) -> None:

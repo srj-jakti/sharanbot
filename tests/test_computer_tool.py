@@ -127,7 +127,7 @@ class TestComputerToolExecute:
         with patch.object(tool._session, "get", return_value=mock_resp):
             result = await tool.execute(action="screenshot")
             assert isinstance(result, list)
-            assert any(b.get("type") == "image" for b in result)
+            assert any(b.get("type") == "image_url" for b in result)
 
     @pytest.mark.asyncio
     async def test_mouse_click_success(self):

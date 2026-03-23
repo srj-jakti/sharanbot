@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import time
-from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -29,18 +28,33 @@ from sharanbot.agent.tools.web import WebFetchTool, WebSearchTool
 from sharanbot.agent.tools.worker import WorkerStartTool, WorkerStatusTool, WorkerSteerTool, WorkerStopTool
 from sharanbot.agent.tools.reload import ReloadTool
 from sharanbot.agent.tools.evolve import EvolveTool
-from sharanbot.agent.tools.dynamic import DynamicToolLoader
+from sharanbot.agent.tool_manager import ToolManager
 from sharanbot.agent.profiles import AgentProfileRegistry
 from sharanbot.agent.worker_registry import WorkerTypeRegistry
 from sharanbot.agent.team.orchestrator import TeamOrchestrator
 from sharanbot.agent.team.tools import TeamCreateTool, TeamStatusTool, TeamSteerTool
 from sharanbot.agent.team.autopilot import Autopilot
+from sharanbot.agent.subconscious import Subconscious
 from sharanbot.agent.tools.import_agent import ImportAgentTool
 from sharanbot.agent.tools.browser import BrowserTool
 from sharanbot.agent.tools.tandem_browser import TandemBrowserTool
 from sharanbot.agent.tools.computer import ComputerTool
 from sharanbot.agent.tools.wingman import WingmanTaskTool, WingmanChatTool
 from sharanbot.agent.tools.sandbox import SandboxTool
+from sharanbot.agent.tools.process import (
+    ProcessStartTool,
+    ProcessStatusTool,
+    ProcessStopTool,
+    PortCheckTool,
+    WaitForPortTool,
+)
+from sharanbot.agent.tools.create_software import CreateSoftwareTool
+from sharanbot.agent.tools.spawn_dev_team import SpawnDevTeamTool
+from sharanbot.agent.tools.create_plugin import CreatePluginTool
+from sharanbot.agent.tools.create_skill import CreateSkillTool
+from sharanbot.agent.tools.create_tool import CreateToolTool
+from sharanbot.agent.tools.create_worker import CreateWorkerTool
+from sharanbot.agent.tools.spawn_self_build import SpawnSelfBuildTool
 from sharanbot.agent.learning import LearningStore
 from sharanbot.agent.recovery import RecoveryEngine
 from sharanbot.bus.events import InboundMessage, OutboundMessage
@@ -92,6 +106,7 @@ class AgentLoop:
         worker_type_registry: WorkerTypeRegistry | None = None,
         agent_profile_registry: AgentProfileRegistry | None = None,
         channel_manager: "ChannelManager | None" = None,
+        browser_backend: str = "auto",
     ):
         from sharanbot.config.schema import ExecToolConfig, WebSearchConfig
 
@@ -115,6 +130,7 @@ class AgentLoop:
             plugins_dir=workspace / "plugins" / "agents"
         )
         self.channel_manager: ChannelManager | None = channel_manager
+        self.browser_backend = browser_backend
         self._start_time = time.time()
         self._last_usage: dict[str, int] = {}
 
@@ -135,12 +151,11 @@ class AgentLoop:
 
         self._running = False
         self._mcp_servers = mcp_servers or {}
-        self._mcp_stack: AsyncExitStack | None = None
-        self._mcp_connected = False
-        self._mcp_connecting = False
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._processing_lock = asyncio.Lock()
+        self._session_locks: dict[str, asyncio.Lock] = {}  # per-session message locks
+        self._autopilot_active: dict[str, str] = {}  # session_key -> task description
 
         # Team orchestration
         self.team_orchestrator = TeamOrchestrator(
@@ -151,7 +166,12 @@ class AgentLoop:
             message_bus=bus,
             workspace=workspace,
         )
-        self.autopilot = Autopilot(provider=provider, model=self.model, workspace=workspace)
+        self.autopilot = Autopilot(
+            provider=provider,
+            model=self.model,
+            workspace=workspace,
+            max_iterations=max_iterations,
+        )
 
         self.memory_consolidator = MemoryConsolidator(
             workspace=workspace,
@@ -176,6 +196,24 @@ class AgentLoop:
         # Proactive autopilot: connect learning store
         self.autopilot.set_learning_store(self.learning_store)
 
+        # Give Autopilot full execution capabilities (Boss→Executor wiring)
+        self.autopilot.set_execution_context(
+            tools=self.tools,
+            subagent_manager=self.subagents,
+            team_orchestrator=self.team_orchestrator,
+            context_window_tokens=context_window_tokens,
+        )
+
+        # Subconscious — persistent background memory layer
+        self.subconscious = Subconscious(
+            provider=provider,
+            model=self.model,
+            workspace=workspace,
+        )
+
+        # Connect subconscious to autopilot for mid-task sync
+        self.autopilot.set_subconscious(self.subconscious)
+
         # Vault (encrypted credential store)
         self.vault = Vault(workspace / "vault.json")
 
@@ -184,16 +222,31 @@ class AgentLoop:
 
         self._register_default_tools()
 
-        # Dynamic tools from workspace/plugins/tools/
-        self._dynamic_loader = DynamicToolLoader(
-            tools_dir=workspace / "plugins" / "tools",
+        # Dynamic tools + MCP lifecycle
+        self.tool_mgr = ToolManager(
             registry=self.tools,
+            workspace=workspace,
+            mcp_servers=self._mcp_servers,
         )
-        self._dynamic_loader.scan_and_load()
 
         # Scan plugin directories
         self.worker_type_registry.scan_plugins()
         self.agent_profile_registry.scan_plugins()
+
+    def _select_browser_tool(self, backend: str) -> Tool:
+        """Select browser tool based on config with automatic fallback."""
+        ss_dir = self.workspace / "screenshots"
+        if backend == "playwright":
+            return BrowserTool(screenshots_dir=ss_dir)
+        if backend == "tandem":
+            return TandemBrowserTool(screenshots_dir=ss_dir)
+        # "auto" — try Tandem first, fall back to Playwright
+        tandem = TandemBrowserTool(screenshots_dir=ss_dir)
+        if tandem._is_reachable():
+            logger.info("Browser backend: Tandem Browser (auto-detected)")
+            return tandem
+        logger.info("Browser backend: Playwright (Tandem not reachable)")
+        return BrowserTool(screenshots_dir=ss_dir)
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
@@ -236,11 +289,9 @@ class AgentLoop:
             agent_loop=self,
         ))
 
-        # Browser tool — prefer Tandem Browser (Electron) when available,
-        # fall back to headless Playwright otherwise.
-        self.tools.register(TandemBrowserTool(
-            screenshots_dir=self.workspace / "screenshots",
-        ))
+        # Browser tool — select backend based on config with fallback
+        browser_tool = self._select_browser_tool(self.browser_backend)
+        self.tools.register(browser_tool)
 
         # Computer tool — coordinate-based mouse, keyboard, and screenshot
         self.tools.register(ComputerTool(
@@ -254,61 +305,39 @@ class AgentLoop:
         # Sandbox tool (Docker-based isolated execution)
         self.tools.register(SandboxTool(workspace=self.workspace))
 
-    async def _connect_mcp(self) -> None:
-        """Connect to configured MCP servers (one-time, lazy) with auto-recovery."""
-        if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
-            return
-        self._mcp_connecting = True
-        from sharanbot.agent.tools.mcp import connect_mcp_servers
+        # Background process management tools
+        if self.exec_config.enable:
+            self.tools.register(ProcessStartTool(
+                working_dir=str(self.workspace),
+                path_append=self.exec_config.path_append,
+            ))
+            self.tools.register(ProcessStatusTool())
+            self.tools.register(ProcessStopTool())
+            self.tools.register(PortCheckTool())
+            self.tools.register(WaitForPortTool())
 
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            try:
-                self._mcp_stack = AsyncExitStack()
-                await self._mcp_stack.__aenter__()
-                await connect_mcp_servers(self._mcp_servers, self.tools, self._mcp_stack)
-                self._mcp_connected = True
-                if attempt > 1:
-                    self.recovery_engine.reset_circuit("mcp")
-                    self.learning_store.record(
-                        category="mcp_failure",
-                        error_signature="mcp_failure:connect",
-                        description="MCP connection recovered",
-                        fix_applied=f"Retry attempt {attempt} succeeded",
-                        success=True,
-                    )
-                break
-            except BaseException as e:
-                logger.error("Failed to connect MCP servers (attempt {}/{}): {}", attempt, max_attempts, e)
-                if self._mcp_stack:
-                    try:
-                        await self._mcp_stack.aclose()
-                    except Exception:
-                        pass
-                    self._mcp_stack = None
-                if attempt < max_attempts:
-                    wait = 2 ** attempt
-                    logger.info("Retrying MCP connection in {}s...", wait)
-                    self.learning_store.record(
-                        category="mcp_failure",
-                        error_signature="mcp_failure:connect",
-                        description=str(e)[:200],
-                        fix_applied=f"Retry with {wait}s backoff",
-                        success=False,
-                        cooldown_seconds=wait,
-                    )
-                    await asyncio.sleep(wait)
-                else:
-                    logger.error("MCP connection failed after {} attempts, will retry next message", max_attempts)
-        self._mcp_connecting = False
+        # Software creation & multi-agent dev team tools
+        self.tools.register(CreateSoftwareTool())
+        self.tools.register(SpawnDevTeamTool())
+
+        # Self-extension tools: create plugins, tools, skills, workers at runtime
+        self.tools.register(CreatePluginTool())
+        self.tools.register(CreateSkillTool())
+        self.tools.register(CreateToolTool(tool_registry=self.tools))
+        self.tools.register(CreateWorkerTool())
+        self.tools.register(SpawnSelfBuildTool())
+
+    async def _connect_mcp(self) -> None:
+        """Connect to configured MCP servers (delegates to ToolManager)."""
+        await self.tool_mgr.connect_mcp(self.recovery_engine, self.learning_store)
 
     async def handle_reload(self, component: str, target: str | None = None) -> str:
         """Dispatch a reload request for the given component."""
         if component == "tools":
-            count = self._dynamic_loader.reload_all()
+            count = self.tool_mgr.reload_tools()
             return f"Reloaded dynamic tools ({count} loaded)."
         elif component == "mcp":
-            await self._reconnect_mcp()
+            await self.tool_mgr.reconnect_mcp()
             return "MCP servers reconnected."
         elif component == "config":
             from sharanbot.config.loader import reload_config
@@ -332,37 +361,56 @@ class AgentLoop:
             return f"Unknown component: {component}"
 
     async def _reconnect_mcp(self) -> None:
-        """Tear down and reconnect all MCP servers."""
-        # Close existing connections
-        if self._mcp_stack:
-            try:
-                await self._mcp_stack.aclose()
-            except (RuntimeError, BaseExceptionGroup):
-                pass  # MCP SDK cancel scope cleanup is noisy but harmless
-            except Exception:
-                pass
-            self._mcp_stack = None
-        # Unregister MCP tools
-        for name in list(self.tools._tools.keys()):
-            if name.startswith("mcp_"):
-                self.tools.unregister(name)
-        # Reset state and reconnect
-        self._mcp_connected = False
-        self._mcp_connecting = False
-        await self._connect_mcp()
+        """Tear down and reconnect all MCP servers (delegates to ToolManager)."""
+        await self.tool_mgr.reconnect_mcp()
 
     def apply_config_reload(self, new_config) -> None:
-        """Apply a new Config object to the running agent."""
+        """Apply a new Config object to the running agent.
+
+        Handles model, iterations, context window, provider, tools,
+        MCP servers, channels, and browser backend.
+        """
+        from sharanbot.security.sanitizer import validate_config_update
+
         defaults = new_config.agent_defaults
+        # Validate the dynamic fields through the sanitizer
+        dynamic_updates = {}
         if defaults.model:
-            self.model = defaults.model
+            dynamic_updates["model"] = defaults.model
         if defaults.max_iterations:
-            self.max_iterations = defaults.max_iterations
+            dynamic_updates["max_iterations"] = defaults.max_iterations
         if defaults.context_window:
-            self.context_window_tokens = defaults.context_window
+            dynamic_updates["context_window"] = defaults.context_window
+        safe = validate_config_update(dynamic_updates)
+        if "model" in safe:
+            self.model = safe["model"]
+        if "max_iterations" in safe:
+            self.max_iterations = safe["max_iterations"]
+        if "context_window" in safe:
+            self.context_window_tokens = safe["context_window"]
+
+        # Provider: update API key / base if changed
+        provider_cfg = getattr(new_config, "providers", None)
+        if provider_cfg and hasattr(self.provider, "update_config"):
+            self.provider.update_config(provider_cfg)
+
+        # Tool settings: exec, web search, browser backend
+        tools_cfg = getattr(new_config, "tools", None)
+        if tools_cfg:
+            if hasattr(tools_cfg, "exec"):
+                self.exec_config = tools_cfg.exec
+            if hasattr(tools_cfg, "web") and hasattr(tools_cfg.web, "search"):
+                self.web_search_config = tools_cfg.web.search
+
         # Update MCP servers list for next reconnect
         if new_config.mcp_servers:
             self._mcp_servers = new_config.mcp_servers
+            self.tool_mgr.update_mcp_servers(new_config.mcp_servers)
+
+        # Channels config
+        channels_cfg = getattr(new_config, "channels", None)
+        if channels_cfg:
+            self.channels_config = channels_cfg
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
@@ -411,19 +459,121 @@ class AgentLoop:
             metadata={"render_as": "text"},
         )
 
+    def _estimate_messages_tokens(self, messages: list[dict]) -> int:
+        """Estimate token count for a message list."""
+        try:
+            from sharanbot.utils.helpers import estimate_prompt_tokens_chain
+            est, _ = estimate_prompt_tokens_chain(
+                self.provider, self.model, messages,
+                self.tools.get_definitions(),
+            )
+            return est
+        except Exception as exc:
+            logger.debug("Token estimation via provider failed, using fallback: {}", exc)
+            # Rough fallback: ~4 chars per token
+            total = sum(len(str(m.get("content", ""))) for m in messages)
+            return total // 4
+
+    async def _summarize_and_continue(self, messages: list[dict], iteration: int) -> list[dict]:
+        """At 80%% token usage, summarize conversation so far and continue seamlessly."""
+        logger.info("Token window at 80%% (iter {}), summarizing context to continue", iteration)
+
+        # Extract system prompt (first message)
+        system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+
+        # Summarize conversation using LLM
+        summary_prompt = (
+            "Summarize the conversation so far into a concise but complete context. "
+            "Include: what the user asked, what has been done so far (files created/edited, "
+            "commands run, results obtained), what remains to be done, and any important "
+            "decisions or context. Be thorough — this summary replaces the full history."
+        )
+        summary_messages = [
+            {"role": "system", "content": "You are a conversation summarizer. Create a detailed summary that preserves all important context."},
+            {"role": "user", "content": summary_prompt + "\n\nConversation:\n" + self._format_messages_for_summary(messages[1:])},
+        ]
+
+        try:
+            response = await self.provider.chat_with_retry(
+                messages=summary_messages,
+                model=self.model,
+            )
+            summary = response.content or "Summary generation failed."
+        except Exception as e:
+            logger.warning("Summary generation failed: {}, using raw truncation", e)
+            # Fallback: keep last N messages
+            if system_msg:
+                return [system_msg] + messages[-10:]
+            return messages[-10:]
+
+        # Rebuild messages with system + summary + continuation instruction
+        new_messages = []
+        if system_msg:
+            new_messages.append(system_msg)
+        new_messages.append({
+            "role": "user",
+            "content": (
+                f"[Context Summary — conversation continued from iteration {iteration}]\n\n"
+                f"{summary}\n\n"
+                "Continue working on the task. Pick up exactly where you left off. "
+                "Do NOT repeat work already done. Do NOT claim completion unless you have "
+                "actually verified the result."
+            ),
+        })
+
+        logger.info("Context summarized: {} messages → 2 messages, continuing autonomously", len(messages))
+        return new_messages
+
+    @staticmethod
+    def _format_messages_for_summary(messages: list[dict]) -> str:
+        """Format messages into readable text for summarization."""
+        lines = []
+        for m in messages[-50:]:  # Last 50 messages max for summary input
+            role = m.get("role", "unknown").upper()
+            content = m.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+                )
+            if content:
+                lines.append(f"[{role}]: {str(content)[:500]}")
+        return "\n".join(lines)
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
-        """Run the agent iteration loop."""
+        """Run the agent iteration loop — autonomous, no hard iteration cap.
+
+        The loop runs until the LLM produces a final response (no tool calls).
+        At 80%% token window usage, context is summarized and the loop continues.
+        A soft checkpoint every 50 iterations logs progress but does NOT stop.
+        """
         messages = initial_messages
         iteration = 0
         final_content = None
         tools_used: list[str] = []
+        consecutive_errors = 0
+        _MAX_CONSECUTIVE_ERRORS = 5
 
-        while iteration < self.max_iterations:
+        # No hard cap — loop runs until LLM gives final response
+        while True:
             iteration += 1
+
+            # Token window management: summarize at 80% to continue seamlessly
+            if iteration % 5 == 0:  # Check every 5 iterations to avoid overhead
+                estimated_tokens = self._estimate_messages_tokens(messages)
+                token_threshold = int(self.context_window_tokens * 0.80)
+                if estimated_tokens >= token_threshold:
+                    messages = await self._summarize_and_continue(messages, iteration)
+
+            # Soft checkpoint logging every 50 iterations (no stop)
+            if iteration % 50 == 0:
+                logger.info(
+                    "Autonomous loop checkpoint: iteration {}, tools_used={}",
+                    iteration, len(tools_used),
+                )
 
             tool_defs = self.tools.get_definitions()
 
@@ -439,6 +589,7 @@ class AgentLoop:
             }
 
             if response.has_tool_calls:
+                consecutive_errors = 0  # successful LLM call resets counter
                 if on_progress:
                     thought = self._strip_think(response.content)
                     if thought:
@@ -470,7 +621,13 @@ class AgentLoop:
                 # Don't persist error responses to session history — they can
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
-                    logger.error("LLM returned error: {}", (clean or "")[:200])
+                    consecutive_errors += 1
+                    logger.error("LLM returned error ({}/{}): {}", consecutive_errors, _MAX_CONSECUTIVE_ERRORS, (clean or "")[:200])
+
+                    if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                        logger.error("Max consecutive LLM errors reached, stopping loop")
+                        final_content = clean or "Sorry, I encountered a persistent error calling the AI model."
+                        break
 
                     # Auto-recovery: try to recover from LLM errors
                     recovered = await self.recovery_engine.handle_error(
@@ -478,25 +635,19 @@ class AgentLoop:
                         component="llm_provider",
                         context={"iteration": iteration},
                     )
-                    if recovered and iteration < self.max_iterations:
+                    if recovered:
                         logger.info("LLM error auto-recovered, continuing loop")
                         continue  # Retry the LLM call
 
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
                     break
+                consecutive_errors = 0  # successful LLM call resets counter
                 messages = self.context.add_assistant_message(
                     messages, clean, reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
                 )
                 final_content = clean
                 break
-
-        if final_content is None and iteration >= self.max_iterations:
-            logger.warning("Max iterations ({}) reached", self.max_iterations)
-            final_content = (
-                f"I reached the maximum number of tool call iterations ({self.max_iterations}) "
-                "without completing the task. You can try breaking the task into smaller steps."
-            )
 
         return final_content, tools_used, messages
 
@@ -566,6 +717,27 @@ class AgentLoop:
 
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the global lock, with auto-recovery on failure."""
+        # If the lock is already held (e.g. autopilot running), reply immediately
+        # instead of blocking. The user shouldn't have to wait minutes for a response.
+        if self._processing_lock.locked():
+            active_task = self._autopilot_active.get(msg.session_key)
+            if active_task:
+                preview = active_task[:200]
+                busy_msg = (
+                    f"⚡ I'm currently working on your previous request:\n"
+                    f"_{preview}_\n\n"
+                    f"I'll respond when it's done. Send /stop to cancel."
+                )
+            else:
+                busy_msg = (
+                    "I'm still processing your previous message. "
+                    "Please wait a moment or send /stop to cancel."
+                )
+            await self.bus.publish_outbound(OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content=busy_msg,
+            ))
+            return
+
         max_recovery_attempts = 2
 
         for attempt in range(1, max_recovery_attempts + 1):
@@ -607,12 +779,12 @@ class AgentLoop:
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
             self._background_tasks.clear()
-        if self._mcp_stack:
+        if self.tool_mgr._mcp_stack:
             try:
-                await self._mcp_stack.aclose()
+                await self.tool_mgr._mcp_stack.aclose()
             except (RuntimeError, BaseExceptionGroup):
                 pass  # MCP SDK cancel scope cleanup is noisy but harmless
-            self._mcp_stack = None
+            self.tool_mgr._mcp_stack = None
 
     def _schedule_background(self, coro) -> None:
         """Schedule a coroutine as a tracked background task (drained on shutdown)."""
@@ -624,6 +796,55 @@ class AgentLoop:
         """Stop the agent loop."""
         self._running = False
         logger.info("Agent loop stopping")
+
+    async def _boss_review(
+        self,
+        user_request: str,
+        autopilot_result: str,
+        history: list[dict],
+        channel: str | None = None,
+        chat_id: str | None = None,
+    ) -> str:
+        """SharanBot Boss reviews Autopilot's work and crafts a clean user response.
+
+        This is the quality gate — SharanBot reviews what Autopilot did and
+        synthesizes it into a clean, professional response for the user.
+        The user never sees the raw Autopilot output, only SharanBot's polished version.
+        """
+        review_messages = [
+            {"role": "system", "content": (
+                "You are SharanBot — the Boss. Your Autopilot executor just completed a task. "
+                "Review the results and craft a CLEAN, professional response for the user.\n\n"
+                "Rules:\n"
+                "1. Give the user ONLY the results — no internal details, no JSON dumps, no tool call logs.\n"
+                "2. Be concise but complete. The user should know what was done and the outcome.\n"
+                "3. If something failed, say so honestly. Don't hide failures.\n"
+                "4. If the work is incomplete, say what's done and what remains.\n"
+                "5. Use natural language. No technical jargon unless the user is technical.\n"
+                "6. If the result includes files created/edited, mention them clearly.\n"
+                "7. NEVER say 'Autopilot did X' — you speak as SharanBot. Say 'I did X' or 'Done.'\n"
+                "8. Keep it focused — only what matters to the user's original request."
+            )},
+            {"role": "user", "content": (
+                f"**User's original request:**\n{user_request}\n\n"
+                f"**Autopilot's execution report:**\n{autopilot_result}\n\n"
+                "Now craft the clean response for the user."
+            )},
+        ]
+
+        try:
+            response = await self.provider.chat_with_retry(
+                messages=review_messages,
+                model=self.model,
+            )
+            clean_response = response.content
+            if clean_response:
+                return clean_response
+        except Exception as e:
+            logger.warning("Boss review LLM call failed: {}, using raw result", e)
+
+        # Fallback: return autopilot result directly if review fails
+        return autopilot_result
 
     async def _process_message(
         self,
@@ -699,8 +920,12 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        # Autopilot: analyze task complexity and inject routing hint
-        autopilot_hint = ""
+        # SessionStart hook: record session metadata for subconscious
+        self.subconscious.on_session_start(session.key, channel=msg.channel)
+
+        # ── Boss Flow: SharanBot decides how to handle ──
+        # Autopilot: analyze task complexity
+        decision = None
         if self.autopilot.enabled:
             try:
                 decision = await self.autopilot.analyze(msg.content)
@@ -710,20 +935,8 @@ class AgentLoop:
                     decision.suggested_profile, decision.suggested_pipeline,
                     decision.reasoning,
                 )
-                if decision.needs_team:
-                    autopilot_hint = (
-                        f"\n\n[Autopilot Advisory] This task is complex ({decision.complexity}). "
-                        f"Recommended: Use team_create with pipeline='{decision.suggested_pipeline}' "
-                        f"to handle this efficiently with a multi-agent team. Reason: {decision.reasoning}"
-                    )
-                elif decision.needs_subagent:
-                    autopilot_hint = (
-                        f"\n\n[Autopilot Advisory] This task is moderate ({decision.complexity}). "
-                        f"Consider using spawn with profile='{decision.suggested_profile}' "
-                        f"for focused execution. Reason: {decision.reasoning}"
-                    )
             except Exception as e:
-                logger.warning("Autopilot analysis failed, proceeding without hint: {}", e)
+                logger.warning("Autopilot analysis failed, Boss handles directly: {}", e)
 
         # Inject memory context hint when conversation is long
         memory_hint = ""
@@ -737,18 +950,24 @@ class AgentLoop:
                         f"({estimated}/{self.context_window_tokens} tokens). "
                         f"Key context from memory:\n{mem_content[:2000]}"
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Memory hint generation failed: {}", exc)
 
-        # Build enriched user message with autopilot + memory hints
-        enriched_content = msg.content + autopilot_hint + memory_hint
+        # Inject subconscious guidance (persistent cross-session context)
+        subconscious_hint = ""
+        try:
+            guidance = self.subconscious.inject_guidance()
+            if guidance:
+                subconscious_hint = f"\n\n{guidance}"
+        except Exception as e:
+            logger.debug("Subconscious guidance injection skipped: {}", e)
 
         history = session.get_history(max_messages=0)
-        initial_messages = self.context.build_messages(
-            history=history,
-            current_message=enriched_content,
-            media=msg.media if msg.media else None,
-            channel=msg.channel, chat_id=msg.chat_id,
+
+        # ── Route: Simple → Boss handles directly | Complex → Autopilot executes ──
+        is_complex = (
+            decision is not None
+            and decision.strategy in ("single_agent", "team")
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -759,9 +978,60 @@ class AgentLoop:
                 channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
             ))
 
-        final_content, _, all_msgs = await self._run_agent_loop(
-            initial_messages, on_progress=on_progress or _bus_progress,
-        )
+        progress_fn = on_progress or _bus_progress
+
+        if is_complex and decision is not None:
+            # ── COMPLEX TASK: Autopilot executes, then Boss reviews ──
+            logger.info("Boss delegating to Autopilot: {}", msg.content[:80])
+
+            # Notify user that work is starting
+            await progress_fn("⚡ Working on it...")
+
+            # Autopilot runs full execution loop with all tools
+            self._autopilot_active[key] = msg.content[:200]
+            try:
+                autopilot_result = await self.autopilot.execute(
+                    task=msg.content,
+                    decision=decision,
+                    on_progress=progress_fn,
+                )
+            finally:
+                self._autopilot_active.pop(key, None)
+
+            # Boss review: SharanBot reviews Autopilot's result and crafts clean user response
+            final_content = await self._boss_review(
+                user_request=msg.content,
+                autopilot_result=autopilot_result,
+                history=history,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+            )
+
+            # Save the exchange to session (user msg + boss response)
+            enriched_content = msg.content + memory_hint + subconscious_hint
+            initial_messages = self.context.build_messages(
+                history=history,
+                current_message=enriched_content,
+                media=msg.media if msg.media else None,
+                channel=msg.channel, chat_id=msg.chat_id,
+            )
+            # Add autopilot result as context and boss response
+            all_msgs = initial_messages + [
+                {"role": "assistant", "content": final_content},
+            ]
+        else:
+            # ── SIMPLE TASK: Boss handles directly ──
+            enriched_content = msg.content + memory_hint + subconscious_hint
+            initial_messages = self.context.build_messages(
+                history=history,
+                current_message=enriched_content,
+                media=msg.media if msg.media else None,
+                channel=msg.channel, chat_id=msg.chat_id,
+            )
+
+            final_content, _, all_msgs = await self._run_agent_loop(
+                initial_messages, on_progress=progress_fn,
+            )
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
@@ -769,6 +1039,9 @@ class AgentLoop:
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
         self._schedule_background(self.memory_consolidator.maybe_consolidate_by_tokens(session))
+
+        # Background: subconscious processes transcript to update memory blocks
+        self._schedule_background(self.subconscious.process_transcript(all_msgs, session_key=session.key))
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None

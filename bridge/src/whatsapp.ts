@@ -43,6 +43,12 @@ export class WhatsAppClient {
   private sock: any = null;
   private options: WhatsAppClientOptions;
   private reconnecting = false;
+  private reconnectAttempt = 0;
+
+  /** Max reconnect delay in ms (2 minutes). */
+  private static readonly MAX_DELAY_MS = 120_000;
+  /** Base delay for exponential backoff (1 second). */
+  private static readonly BASE_DELAY_MS = 1_000;
 
   constructor(options: WhatsAppClientOptions) {
     this.options = options;
@@ -96,14 +102,24 @@ export class WhatsAppClient {
 
         if (shouldReconnect && !this.reconnecting) {
           this.reconnecting = true;
-          console.log('Reconnecting in 5 seconds...');
+          this.reconnectAttempt++;
+          // Exponential backoff with random jitter
+          const expDelay = Math.min(
+            WhatsAppClient.BASE_DELAY_MS * Math.pow(2, this.reconnectAttempt - 1),
+            WhatsAppClient.MAX_DELAY_MS,
+          );
+          // Add ±25 % jitter
+          const jitter = expDelay * 0.25 * (Math.random() * 2 - 1);
+          const delay = Math.round(expDelay + jitter);
+          console.log(`Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${this.reconnectAttempt})...`);
           setTimeout(() => {
             this.reconnecting = false;
             this.connect();
-          }, 5000);
+          }, delay);
         }
       } else if (connection === 'open') {
         console.log('✅ Connected to WhatsApp');
+        this.reconnectAttempt = 0;
         this.options.onStatus('connected');
       }
     });

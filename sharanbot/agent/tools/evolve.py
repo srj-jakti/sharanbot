@@ -10,7 +10,12 @@ This creates the ∞-capability loop: SharanBot → builds → loads → uses �
 
 from __future__ import annotations
 
+import ast
+import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from loguru import logger
 
 from sharanbot.agent.tools.base import Tool
 
@@ -122,6 +127,13 @@ class EvolveTool(Tool):
         # Ensure parent directory exists
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        # Backup existing file for rollback
+        backup = None
+        if dest.is_file():
+            backup = dest.with_suffix(dest.suffix + ".bak")
+            shutil.copy2(dest, backup)
+            logger.debug("Backed up {} → {}", dest.name, backup.name)
+
         # Build the task for the worker
         template = _SPEC_TEMPLATES.get(capability_type, "{spec}")
         task = template.format(dest=dest, spec=specification)
@@ -133,8 +145,27 @@ class EvolveTool(Tool):
                 label=f"evolve:{capability_name}",
                 project_dir=str(workspace),
             )
-            # After the worker starts, trigger reload once it's done
-            # For now return info — the worker runs async
+
+            # Validate the generated file before reloading
+            if capability_type == "tool" and dest.is_file():
+                error = self._validate_python_tool(dest, capability_name)
+                if error:
+                    logger.warning("Generated tool failed validation: {}", error)
+                    if backup:
+                        shutil.copy2(backup, dest)
+                        backup.unlink()
+                        logger.info("Rolled back {} from backup", dest.name)
+                    else:
+                        dest.unlink()
+                    return (
+                        f"Evolution FAILED for tool '{capability_name}': {error}\n"
+                        f"The file has been rolled back. Please fix the specification and retry."
+                    )
+
+            # Clean up backup on success
+            if backup and backup.exists():
+                backup.unlink()
+
             reload_result = await self._loop.handle_reload(
                 "tools" if capability_type == "tool" else
                 "workers" if capability_type == "worker" else
@@ -149,9 +180,46 @@ class EvolveTool(Tool):
             )
 
         # Fallback: no worker available — ask the agent to create it directly
+        if backup and backup.exists():
+            backup.unlink()
         return (
             f"No worker available for auto-build. Please create the {capability_type} manually:\n"
             f"1. Write the file to: {dest}\n"
             f"2. Then call: reload(component=\"{'tools' if capability_type == 'tool' else capability_type + 's'}\")\n\n"
             f"Specification: {specification}"
         )
+
+    @staticmethod
+    def _validate_python_tool(path: Path, expected_name: str) -> str | None:
+        """Validate a generated Python tool file. Returns error string or None."""
+        try:
+            source = path.read_text(encoding="utf-8")
+        except Exception as exc:
+            return f"Cannot read file: {exc}"
+
+        # 1. AST parse — catch syntax errors
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError as exc:
+            return f"Syntax error at line {exc.lineno}: {exc.msg}"
+
+        # 2. Check for at least one class definition inheriting from Tool
+        has_tool_class = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for base in node.bases:
+                    base_name = None
+                    if isinstance(base, ast.Name):
+                        base_name = base.id
+                    elif isinstance(base, ast.Attribute):
+                        base_name = base.attr
+                    if base_name == "Tool":
+                        has_tool_class = True
+                        break
+            if has_tool_class:
+                break
+
+        if not has_tool_class:
+            return "No class inheriting from Tool found in the generated file"
+
+        return None

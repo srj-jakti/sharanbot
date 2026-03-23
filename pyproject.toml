@@ -1,6 +1,6 @@
 [project]
 name = "sharanbot-ai"
-version = "0.1.4.post5"
+version = "0.2.0"
 description = "A lightweight personal AI assistant framework"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
@@ -116,3 +116,16 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    # Third-party deprecations we cannot fix (lark_oapi / websockets / pkg_resources)
+    "ignore:pkg_resources is deprecated:DeprecationWarning",
+    "ignore:Deprecated call to `pkg_resources:DeprecationWarning",
+    "ignore:There is no current event loop:DeprecationWarning:lark_oapi",
+    "ignore:websockets.InvalidStatusCode is deprecated:DeprecationWarning:lark_oapi",
+    "ignore:websockets.legacy is deprecated:DeprecationWarning:websockets",
+    # Windows asyncio transport cleanup (Python 3.11 ProactorEventLoop)
+    "ignore:unclosed event loop:ResourceWarning",
+    "ignore:unclosed transport:ResourceWarning",
+    "ignore:unclosed <PipeHandle:ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]

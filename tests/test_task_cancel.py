@@ -111,7 +111,8 @@ class TestDispatch:
         assert out.content == "hi"
 
     @pytest.mark.asyncio
-    async def test_processing_lock_serializes(self):
+    async def test_processing_lock_busy_response(self):
+        """When autopilot/processing is busy, new messages get an immediate busy response."""
         from sharanbot.bus.events import InboundMessage, OutboundMessage
 
         loop, bus = _make_loop()
@@ -128,9 +129,18 @@ class TestDispatch:
         msg2 = InboundMessage(channel="test", sender_id="u1", chat_id="c1", content="b")
 
         t1 = asyncio.create_task(loop._dispatch(msg1))
+        await asyncio.sleep(0)  # let t1 acquire lock
         t2 = asyncio.create_task(loop._dispatch(msg2))
         await asyncio.gather(t1, t2)
-        assert order == ["start-a", "end-a", "start-b", "end-b"]
+        # msg1 processed normally, msg2 got immediate busy response (not blocked)
+        assert order == ["start-a", "end-a"]
+        # Collect both outbound messages (busy response arrives first since it's immediate)
+        outputs = []
+        for _ in range(2):
+            out = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
+            outputs.append(out.content)
+        assert any("processing" in c.lower() or "working" in c.lower() for c in outputs)
+        assert "a" in outputs
 
 
 class TestSubagentCancellation:

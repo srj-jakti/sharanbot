@@ -119,7 +119,16 @@ class HeartbeatService:
 
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
+        self._task.add_done_callback(self._log_task_exception)
         logger.info("Heartbeat started (every {}s)", self.interval_s)
+
+    @staticmethod
+    def _log_task_exception(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Heartbeat loop task failed: {}", exc)
 
     def stop(self) -> None:
         """Stop the heartbeat service."""

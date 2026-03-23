@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import weakref
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -241,11 +240,13 @@ class MemoryConsolidator:
         self.context_window_tokens = context_window_tokens
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
-        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def get_lock(self, session_key: str) -> asyncio.Lock:
         """Return the shared consolidation lock for one session."""
-        return self._locks.setdefault(session_key, asyncio.Lock())
+        if session_key not in self._locks:
+            self._locks[session_key] = asyncio.Lock()
+        return self._locks[session_key]
 
     async def consolidate_messages(self, messages: list[dict[str, object]]) -> bool:
         """Archive a selected message chunk into persistent memory."""
@@ -310,8 +311,8 @@ class MemoryConsolidator:
 
         lock = self.get_lock(session.key)
         async with lock:
-            trigger = self.context_window_tokens * 3 // 4  # 75% trigger
-            target = self.context_window_tokens // 2       # consolidate down to 50%
+            trigger = int(self.context_window_tokens * 0.80)  # 80% trigger
+            target = int(self.context_window_tokens * 0.50)   # consolidate down to 50%
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return

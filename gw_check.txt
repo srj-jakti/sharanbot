@@ -1,0 +1,60 @@
+'mcp_tandem-browser_tandem_screenshot' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_get_links' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_wait_for_load' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_click' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_type' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_scroll' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_execute_js' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_list_tabs' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_open_tab' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_close_tab' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_focus_tab' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_send_message' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_get_chat_history' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_search_bookmarks' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_search_history' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_get_context' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_research' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_create_task' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | DEBUG    | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:227 - MCP: registered tool 
+'mcp_tandem-browser_tandem_emergency_stop' from server 'tandem-browser'
+2026-03-23 14:25:52.831 | INFO     | 
+sharanbot.agent.tools.mcp:connect_mcp_servers:247 - MCP server 
+'tandem-browser': connected, 24 tools registered
+2026-03-23 14:25:52.831 | INFO     | sharanbot.agent.loop:run:608 - Agent loop 
+started

@@ -1,15 +1,20 @@
-"""Autopilot — proactive autonomous decision engine with superhuman memory.
+"""Autopilot — SharanBot's autonomous executor and right hand.
 
-Goes beyond reactive task routing:
-- Anticipates user needs based on conversation history and learned patterns
-- Remembers cross-session context (past tasks, preferences, failures)
-- Suggests next actions before the user asks
-- Routes tasks optimally using accumulated intelligence
-- Adapts behavior based on time-of-day and workload patterns
+The Autopilot is the EXECUTOR that works under SharanBot (the Boss):
+- Receives delegated tasks from SharanBot
+- Plans execution strategy (direct tools, subagents, or teams)
+- Manages ALL workers, subagents, and tools during execution
+- Runs a full autonomous agent loop with all tools
+- Reports results back to SharanBot for review
+- Remembers cross-session patterns for intelligent routing
+- Learns from errors to avoid repeating failures
+
+Hierarchy: User <-> SharanBot (Boss) -> Autopilot (Executor) -> Workers/Tools/Teams
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -23,6 +28,9 @@ from sharanbot.providers.base import LLMProvider
 
 if TYPE_CHECKING:
     from sharanbot.agent.learning import LearningStore
+    from sharanbot.agent.tools.registry import ToolRegistry
+    from sharanbot.agent.subagent import SubagentManager
+    from sharanbot.agent.team.orchestrator import TeamOrchestrator
 
 _ANALYSIS_PROMPT = """\
 Analyze this task and determine the best execution strategy.
@@ -239,26 +247,64 @@ class AutopilotMemory:
 
 
 class Autopilot:
-    """Proactive autonomous decision engine for SharanBot.
+    """Autopilot — SharanBot's autonomous executor and right hand.
 
-    Beyond reactive routing, the autopilot:
-    1. Remembers user patterns across sessions (superhuman memory)
-    2. Anticipates needs based on recent activity and learning store
-    3. Suggests follow-up actions proactively
-    4. Adapts routing based on accumulated intelligence
-    5. Uses learned error patterns to avoid known-bad strategies
+    The Autopilot is NOT just an advisor — it's a FULL EXECUTOR:
+    1. Analyzes tasks and plans execution strategy
+    2. Executes tasks autonomously with ALL tools (filesystem, shell, browser, etc.)
+    3. Manages subagents, teams, and workers during execution
+    4. Reports results back to SharanBot (the Boss) for review
+    5. Learns from errors and remembers patterns across sessions
+    6. Runs its own autonomous agent loop with a configurable iteration limit
+
+    Hierarchy: SharanBot (Boss) -> Autopilot (Executor) -> Workers/Tools/Teams
     """
 
-    def __init__(self, provider: LLMProvider, model: str, workspace: Path | None = None):
+    def __init__(
+        self,
+        provider: LLMProvider,
+        model: str,
+        workspace: Path | None = None,
+        max_iterations: int = 200,
+    ):
         self.provider = provider
         self.model = model
         self.enabled = True
+        self.workspace = workspace
+        self.max_iterations = max_iterations
         self._memory = AutopilotMemory(workspace) if workspace else None
         self._learning: LearningStore | None = None
+        # Execution capabilities (set by AgentLoop after init)
+        self._tools: ToolRegistry | None = None
+        self._subagent_manager: SubagentManager | None = None
+        self._team_orchestrator: TeamOrchestrator | None = None
+        self._context_window_tokens: int = 65_536
+        self._subconscious = None  # Set via set_subconscious()
 
     def set_learning_store(self, learning: LearningStore) -> None:
         """Connect the learning store for error-aware routing."""
         self._learning = learning
+
+    def set_execution_context(
+        self,
+        tools: "ToolRegistry",
+        subagent_manager: "SubagentManager",
+        team_orchestrator: "TeamOrchestrator",
+        context_window_tokens: int,
+    ) -> None:
+        """Give Autopilot full execution capabilities.
+
+        Called by AgentLoop after initialization to grant the Autopilot
+        access to all tools, subagents, and team orchestration.
+        """
+        self._tools = tools
+        self._subagent_manager = subagent_manager
+        self._team_orchestrator = team_orchestrator
+        self._context_window_tokens = context_window_tokens
+
+    def set_subconscious(self, subconscious) -> None:
+        """Connect the subconscious for mid-task guidance sync."""
+        self._subconscious = subconscious
 
     async def analyze(self, task: str, user_id: str = "default") -> AutopilotDecision:
         """Analyze a task with full memory and pattern awareness."""
@@ -427,6 +473,291 @@ class Autopilot:
 
         # No quick classification — need LLM
         return None
+
+    async def execute(
+        self,
+        task: str,
+        decision: AutopilotDecision,
+        on_progress: Any = None,
+    ) -> str:
+        """Execute a task autonomously with full tool access.
+
+        This is the Autopilot's MAIN capability — it runs a complete agent loop
+        with all tools to accomplish the task, then returns the result to SharanBot.
+        """
+        if not self._tools:
+            return f"Autopilot execution not available (tools not connected). Task: {task}"
+
+        logger.info(
+            "Autopilot executing: strategy={}, complexity={}, task={}",
+            decision.strategy, decision.complexity, task[:80],
+        )
+
+        system_prompt = self._build_executor_prompt(decision)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": task},
+        ]
+
+        iteration = 0
+        max_iterations = self.max_iterations
+        final_result: str | None = None
+        tools_used: list[str] = []
+
+        try:
+          while iteration < max_iterations:
+            iteration += 1
+
+            # Token management: summarize at 80%
+            if iteration % 5 == 0:
+                estimated = self._estimate_tokens(messages)
+                threshold = int(self._context_window_tokens * 0.80)
+                if estimated >= threshold:
+                    messages = await self._summarize_execution(messages, iteration)
+
+            # Soft checkpoint
+            if iteration % 25 == 0:
+                logger.info("Autopilot execution checkpoint: iter={}, tools={}", iteration, len(tools_used))
+                if on_progress:
+                    try:
+                        await on_progress(f"\u26a1 Autopilot working... (step {iteration}, {len(tools_used)} tool calls)")
+                    except Exception:
+                        pass
+
+            # Mid-task subconscious sync: lightweight diff check (no LLM call)
+            # Mirrors claude-subconscious PreToolUse hook — just checks if background
+            # processing has updated any memory blocks and injects the diff if so.
+            if self._subconscious and iteration % 5 == 0 and iteration > 1:
+                try:
+                    sync_guidance = self._subconscious.mid_task_sync()
+                    if sync_guidance:
+                        messages.append({
+                            "role": "user",
+                            "content": f"[Subconscious mid-task update]\n{sync_guidance}",
+                        })
+                        logger.debug("Autopilot injected mid-task subconscious sync at iter {}", iteration)
+                except Exception as e:
+                    logger.debug("Autopilot mid-task sync skipped: {}", e)
+
+            tool_defs = self._tools.get_definitions()
+
+            try:
+                response = await self.provider.chat_with_retry(
+                    messages=messages,
+                    tools=tool_defs,
+                    model=self.model,
+                )
+            except Exception as e:
+                logger.error("Autopilot LLM call failed: {}", e)
+                if final_result:
+                    break
+                return f"Autopilot execution failed during LLM call: {e}"
+
+            if response.has_tool_calls:
+                if on_progress and response.content:
+                    try:
+                        await on_progress(response.content[:200])
+                    except Exception:
+                        pass
+
+                tool_call_dicts = [
+                    tc.to_openai_tool_call()
+                    for tc in response.tool_calls
+                ]
+                from sharanbot.agent.context import build_assistant_message
+                messages.append(build_assistant_message(
+                    response.content or "",
+                    tool_calls=tool_call_dicts,
+                    reasoning_content=response.reasoning_content,
+                    thinking_blocks=response.thinking_blocks,
+                ))
+
+                for tool_call in response.tool_calls:
+                    tools_used.append(tool_call.name)
+                    args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                    logger.info("Autopilot tool: {}({})", tool_call.name, args_str[:200])
+                    result = await self._tools.execute(tool_call.name, tool_call.arguments)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.name,
+                        "content": result,
+                    })
+            else:
+                final_result = response.content
+                break
+
+          if final_result is None:
+            if iteration >= max_iterations:
+                final_result = (
+                    f"Autopilot reached iteration limit ({max_iterations}). "
+                    f"Tools used: {len(tools_used)}. Last tools: {tools_used[-5:]}. "
+                    "Task may be incomplete — consider breaking it into smaller subtasks. "
+                    "You can increase the limit via agents.defaults.max_tool_iterations in config."
+                )
+            else:
+                final_result = "Autopilot completed execution but produced no final summary."
+        finally:
+            # Clean up any tools holding external resources (background processes, etc.)
+            if self._tools:
+                for tool in self._tools._tools.values():
+                    close = getattr(tool, "close", None)
+                    if close and callable(close):
+                        try:
+                            result = close()
+                            if hasattr(result, "__await__"):
+                                await result
+                        except Exception:
+                            logger.debug("Error closing tool {} in Autopilot", type(tool).__name__)
+
+        logger.info(
+            "Autopilot execution complete: {} iterations, {} tool calls",
+            iteration, len(tools_used),
+        )
+        return final_result
+
+    def _build_executor_prompt(self, decision: AutopilotDecision) -> str:
+        """Build the system prompt for Autopilot execution mode."""
+        workspace_str = str(self.workspace) if self.workspace else "unknown"
+        return f"""# Autopilot Executor
+
+You are the Autopilot — SharanBot's autonomous executor and right hand.
+SharanBot (the Boss) has delegated a task to you. Execute it completely and report back.
+
+## Your Role
+- You are the EXECUTOR. Do the actual work — use tools, write code, run commands, browse the web.
+- You have FULL access to all tools: filesystem, shell, browser, spawn, team_create, workers, etc.
+- Work autonomously until the task is COMPLETELY done.
+- You have an iteration limit of {self.max_iterations} tool calls. Plan efficiently.
+- Be thorough and verify your work before reporting.
+
+## Task Context
+- Strategy: {decision.strategy} | Complexity: {decision.complexity}
+- Suggested profile: {decision.suggested_profile}
+- Suggested pipeline: {decision.suggested_pipeline}
+- Reasoning: {decision.reasoning}
+
+## Execution Rules
+1. DO the work — don't explain how to do it. Use tools directly.
+2. For complex tasks, use team_create or spawn to parallelize work.
+3. Verify results — run tests, check outputs, take screenshots if needed.
+4. NEVER claim something is done without proof.
+5. NEVER use mock/fake data when real data is requested.
+6. If something fails, report the failure with details — don't hide it.
+7. Your final response should be a COMPLETE report of what was done and the results.
+
+## Dev Server & Process Management
+Use `exec` for one-shot commands (npm install, npm build, running tests, git commands).
+Use `process_start` for long-running processes (npm run dev, flask run, uvicorn, etc.).
+
+### Two Startup Verification Approaches
+
+**Approach A — Pattern matching (faster, use when framework prints a ready message):**
+  process_start(command="npm run dev", wait_for="listening", wait_timeout=60)
+  → Returns when pattern found in output; process confirmed running.
+
+**Approach B — Port check (more reliable, use when unsure about output patterns):**
+  process_start(command="npm run dev")
+  wait_for_port(port=3000, timeout=60)
+  → Confirms TCP socket is listening.
+
+Pick ONE approach per server, not both.
+
+### Ready Patterns by Framework
+- Node/Express: "listening", "Listening on"
+- React/Vite: "ready", "VITE v"
+- Next.js: "started server", "ready"
+- Flask: "Running on"
+- Django: "Starting development server"
+- If unsure: use Approach B (wait_for_port) instead.
+
+### Timeout Guidance
+- Default wait_timeout is 30s. Adjust for slow startups:
+  - React/Vite: 45s
+  - Next.js / TypeScript monorepos: 60-90s
+  - Cold builds: 120s
+
+### Monorepo / Subproject
+Always specify working_dir for projects not at workspace root:
+  process_start(command="npm run dev", working_dir="./packages/frontend")
+
+### Port & Process Management
+- port_check(port) — check if port is available/in-use BEFORE starting a server.
+- process_status() — list ALL running background processes.
+- process_status(process_id) — check specific process and its recent output.
+- process_status(process_id, tail=100) — get more output lines for debugging.
+- process_stop(process_id) — stop a background process when done.
+- Port checking is restricted to localhost only (127.0.0.1, localhost, 0.0.0.0, ::1).
+
+### Troubleshooting
+- **Port in use:** port_check(3000) → "IN USE" → process_status() to find which process → process_stop(pid) → retry.
+- **Process exits immediately:** Check error output, fix root cause (missing deps, wrong dir), retry.
+- **wait_for timeout:** Process may still be starting. Use process_status(id) to check recent output. Increase wait_timeout if output is still growing.
+- **"Command not found":** Check working_dir, ensure dependencies are installed.
+
+### Example: Full Web App Workflow
+1. exec: npm install (wait for completion)
+2. port_check: 3000 (verify port available)
+3. process_start: npm run dev, wait_for="ready", wait_timeout=60
+4. Verify the app works (browser, screenshot, or curl)
+5. Report success with running server details
+
+## Workspace
+{workspace_str}
+
+## HONESTY (NON-NEGOTIABLE)
+- Report ALL failures honestly.
+- Verify before claiming completion.
+- Real data only — no mock substitutes without disclosure."""
+
+    def _estimate_tokens(self, messages: list[dict]) -> int:
+        """Estimate token count for messages.
+
+        Uses ~3.5 chars/token as a safer approximation for English text.
+        Tool call arguments and structured content tend to have lower
+        token density, so counting them at 3.5 avoids underestimation.
+        """
+        total = 0
+        for m in messages:
+            content = m.get("content", "")
+            if content:
+                total += len(str(content))
+            # Also count tool call arguments which consume tokens
+            for tc in m.get("tool_calls", []):
+                func = tc.get("function", {})
+                total += len(func.get("name", ""))
+                total += len(func.get("arguments", ""))
+        return int(total / 3.5)
+
+    async def _summarize_execution(self, messages: list[dict], iteration: int) -> list[dict]:
+        """Summarize execution context at 80% token usage."""
+        logger.info("Autopilot token window at 80%% (iter {}), summarizing", iteration)
+        system_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+
+        summary_messages = [
+            {"role": "system", "content": "Summarize this execution so far. Include: what was asked, what has been done, what tools were used, results so far, and what remains."},
+            {"role": "user", "content": "\n".join(
+                f"[{m.get('role', '?').upper()}]: {str(m.get('content', ''))[:500]}"
+                for m in messages[-40:] if m.get('content')
+            )},
+        ]
+
+        try:
+            response = await self.provider.chat_with_retry(messages=summary_messages, model=self.model)
+            summary = response.content or "Summary failed."
+        except Exception:
+            if system_msg:
+                return [system_msg] + messages[-8:]
+            return messages[-8:]
+
+        new_messages = []
+        if system_msg:
+            new_messages.append(system_msg)
+        new_messages.append({
+            "role": "user",
+            "content": f"[Execution Summary — continued from iteration {iteration}]\n\n{summary}\n\nContinue execution. Pick up where you left off. Do NOT repeat completed work.",
+        })
+        return new_messages
 
     @staticmethod
     def _parse_decision(text: str) -> AutopilotDecision:

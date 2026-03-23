@@ -130,7 +130,15 @@ class OpenClawBackend {
 
       if (msg.type === 'event') {
         if (msg.event === 'connect.challenge') {
-          this._fetchConnectParams(msg.payload?.nonce || '').then((params) => {
+          // Use inline connectParams from the challenge payload if available
+          // (avoids HTTP fetch which fails from file:// origins due to CORS),
+          // otherwise fall back to the HTTP fetch.
+          const inlineParams = msg.payload?.connectParams || null;
+          const paramsPromise = inlineParams
+            ? Promise.resolve(inlineParams)
+            : this._fetchConnectParams(msg.payload?.nonce || '');
+
+          paramsPromise.then((params) => {
             if (!params) {
               this._setConnected(false);
               return;

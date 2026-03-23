@@ -43,7 +43,7 @@ class ExecTool(Tool):
         return "exec"
 
     _MAX_TIMEOUT = 600
-    _MAX_OUTPUT = 10_000
+    _MAX_OUTPUT = 30_000
 
     @property
     def description(self) -> str:
@@ -129,12 +129,9 @@ class ExecTool(Tool):
             # Head + tail truncation to preserve both start and end of output
             max_len = self._MAX_OUTPUT
             if len(result) > max_len:
-                half = max_len // 2
-                result = (
-                    result[:half]
-                    + f"\n\n... ({len(result) - max_len:,} chars truncated) ...\n\n"
-                    + result[-half:]
-                )
+                separator = f"\n\n... ({len(result) - max_len:,} chars truncated) ...\n\n"
+                half = (max_len - len(separator)) // 2
+                result = result[:half] + separator + result[-half:]
 
             return result
 

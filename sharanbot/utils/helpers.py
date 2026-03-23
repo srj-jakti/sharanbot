@@ -2,13 +2,33 @@
 
 import base64
 import json
+import os
 import re
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import tiktoken
+
+
+def atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
+    """Write *content* to *path* atomically via write→fsync→rename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        Path(tmp).replace(path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def detect_image_mime(data: bytes) -> str | None:

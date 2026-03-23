@@ -11,6 +11,7 @@ from typing import Any, Callable, Coroutine
 from loguru import logger
 
 from sharanbot.cron.types import CronJob, CronJobState, CronPayload, CronRunRecord, CronSchedule, CronStore
+from sharanbot.utils.helpers import atomic_write
 
 
 def _now_ms() -> int:
@@ -189,7 +190,7 @@ class CronService:
             ]
         }
 
-        self.store_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write(self.store_path, json.dumps(data, indent=2, ensure_ascii=False))
         self._last_mtime = self.store_path.stat().st_mtime
     
     async def start(self) -> None:
