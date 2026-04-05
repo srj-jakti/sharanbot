@@ -544,29 +544,11 @@ def gateway(
     cron = CronService(cron_store_path)
 
     # Create plugin registries
-    from sharanbot.agent.worker_registry import WorkerTypeRegistry
     from sharanbot.agent.profiles import AgentProfileRegistry
 
     plugins_dir = config.workspace_path / "plugins"
-    worker_type_registry = WorkerTypeRegistry(plugins_dir=plugins_dir / "workers")
-    worker_type_registry.scan_plugins()
     agent_profile_registry = AgentProfileRegistry(plugins_dir=plugins_dir / "agents")
     agent_profile_registry.scan_plugins()
-
-    # Create worker manager if enabled
-    worker_mgr = None
-    if config.worker.enable:
-        from sharanbot.agent.worker import WorkerManager
-        provider_cfg, provider_name = config._match_provider()
-        worker_mgr = WorkerManager(
-            workspace=config.workspace_path,
-            api_key=provider_cfg.api_key if provider_cfg else "",
-            api_base=provider_cfg.api_base if provider_cfg else None,
-            model=config.agents.defaults.model,
-            extra_headers=dict(provider_cfg.extra_headers) if provider_cfg and provider_cfg.extra_headers else None,
-            mcp_servers=config.tools.mcp_servers,
-            worker_type_registry=worker_type_registry,
-        )
 
     # Create channel manager
     channels = ChannelManager(config, bus)
@@ -587,8 +569,6 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
-        worker_manager=worker_mgr,
-        worker_type_registry=worker_type_registry,
         agent_profile_registry=agent_profile_registry,
         channel_manager=channels,
         browser_backend=config.tools.browser_backend,
@@ -694,6 +674,53 @@ def gateway(
         enabled=hb_cfg.enabled,
     )
 
+    # ── SharanAGI: Watchdog Patrol ──
+    from sharanbot.agi.watchdog import WatchdogPatrol
+
+    async def on_watchdog_act(task_desc: str) -> str:
+        """Execute watchdog-initiated tasks through the agent loop."""
+        channel, chat_id = _pick_heartbeat_target()
+        resp = await agent.process_direct(
+            task_desc, session_key="watchdog",
+            channel=channel, chat_id=chat_id,
+        )
+        return resp.content if resp else ""
+
+    async def on_watchdog_notify(message: str) -> None:
+        """Deliver watchdog findings to the user's channel."""
+        from sharanbot.bus.events import OutboundMessage
+        channel, chat_id = _pick_heartbeat_target()
+        if channel == "cli":
+            return
+        await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=message))
+
+    watchdog = WatchdogPatrol(
+        workspace=config.workspace_path,
+        on_act=on_watchdog_act,
+        on_notify=on_watchdog_notify,
+        interval_s=hb_cfg.interval_s * 2,  # patrol at 2x heartbeat interval
+        enabled=hb_cfg.enabled,
+        decision_store=agent.decision_store,
+        task_ledger=agent.task_ledger,
+    )
+    # Give the AGI tool access to the watchdog
+    agi_tool = agent.tools.get("agi")
+    if agi_tool:
+        agi_tool._watchdog = watchdog
+
+    # ── SharanAGI: Wire escalation send callback ──
+    async def on_escalation_send(message: str, screenshot_b64: str | None = None) -> None:
+        from sharanbot.bus.events import OutboundMessage
+        channel, chat_id = _pick_heartbeat_target()
+        if channel == "cli":
+            logger.warning("Escalation: no external channel for human-in-the-loop")
+            return
+        await bus.publish_outbound(OutboundMessage(
+            channel=channel, chat_id=chat_id, content=message,
+        ))
+
+    agent.escalation._on_send = on_escalation_send
+
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
     else:
@@ -714,7 +741,7 @@ def gateway(
     )
 
     console.print(f"[green]✓[/green] Self-evolution: reload, evolve, dynamic tools enabled")
-    console.print(f"[green]✓[/green] Worker types: {len(worker_type_registry.list_types())} available")
+    console.print(f"[green]✓[/green] SharanAGI: watchdog, escalation, projects, knowledge, stuck detection enabled")
     console.print(f"[green]✓[/green] Agent profiles: {len(agent_profile_registry.list_profiles())} available")
 
     # Dashboard server (real-time UI)
@@ -758,10 +785,73 @@ def gateway(
     console.print(f"[green]✓[/green] OpenClaw Bridge: ws://127.0.0.1:18789 (Wingman link)")
     console.print(f"[green]✓[/green] Computer tool: mouse + keyboard + screenshot for all agents")
 
+    async def _cleanup_orphan_processes() -> None:
+        """Kill orphaned dev-server processes from previous SharanBot sessions.
+
+        Scans for node/npm processes whose CWD is inside the workspace and
+        kills them so ports are freed for the new session.
+        """
+        import subprocess as _sp
+
+        patterns = ["npm run dev", "node ", "vite", "next dev", "react-scripts start"]
+        workspace_str = str(config.workspace_path).replace("\\", "/").lower()
+
+        try:
+            if sys.platform == "win32":
+                # Use WMIC to find node.exe processes
+                result = _sp.run(
+                    ["wmic", "process", "where", "name='node.exe'", "get",
+                     "ProcessId,CommandLine", "/format:csv"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                for line in result.stdout.strip().splitlines():
+                    parts = line.strip().split(",")
+                    if len(parts) < 3:
+                        continue
+                    cmdline = ",".join(parts[1:-1]).lower()
+                    pid_str = parts[-1].strip()
+                    if not pid_str.isdigit():
+                        continue
+                    if any(p in cmdline for p in patterns):
+                        try:
+                            _sp.run(["taskkill", "/F", "/PID", pid_str],
+                                    capture_output=True, timeout=5)
+                            logger.info("Killed orphan process PID={} cmd={}", pid_str, cmdline[:80])
+                        except Exception:
+                            pass
+            else:
+                # Unix: use pkill or manual ps scan
+                result = _sp.run(
+                    ["ps", "aux"], capture_output=True, text=True, timeout=10,
+                )
+                for line in result.stdout.splitlines():
+                    line_lower = line.lower()
+                    if any(p in line_lower for p in patterns):
+                        cols = line.split()
+                        if len(cols) >= 2 and cols[1].isdigit():
+                            pid = int(cols[1])
+                            try:
+                                os.kill(pid, signal.SIGKILL)
+                                logger.info("Killed orphan process PID={}", pid)
+                            except (ProcessLookupError, PermissionError):
+                                pass
+        except Exception as e:
+            logger.debug("Orphan process cleanup skipped: {}", e)
+
+        # Also clear the in-memory process registry from previous runs
+        from sharanbot.agent.tools.process import _PROCESS_REGISTRY
+        _PROCESS_REGISTRY.clear()
+
+        console.print("[green]✓[/green] Orphan process cleanup complete")
+
     async def run():
         try:
+            # Kill orphaned processes from previous sessions (node, npm, etc.)
+            await _cleanup_orphan_processes()
+
             await cron.start()
             await heartbeat.start()
+            await watchdog.start()
             await config_watcher.start()
             if dashboard_server:
                 await dashboard_server.start()
@@ -786,8 +876,7 @@ def gateway(
                 await dashboard_server.stop()
             config_watcher.stop()
             await agent.close_mcp()
-            if worker_mgr:
-                await worker_mgr.stop_all()
+            watchdog.stop()
             heartbeat.stop()
             cron.stop()
             agent.stop()
@@ -927,6 +1016,15 @@ def agent(
                                 pass
                             else:
                                 await _print_interactive_progress_line(msg.content, _thinking)
+
+                        elif msg.metadata.get("_background_result"):
+                            # Background autopilot task completed — always print immediately
+                            # regardless of turn_done state (don't capture as turn response)
+                            await _print_interactive_response(
+                                msg.content,
+                                render_markdown=markdown,
+                                metadata=msg.metadata,
+                            )
 
                         elif not turn_done.is_set():
                             if msg.content:

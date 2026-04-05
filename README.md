@@ -1,37 +1,89 @@
 <div align="center">
-  <img src="sharanbot_logo.svg" alt="SharanBot" width="300">
-  <h1>SharanBot — The Demon Boss of AI Agents</h1>
-  <p><b>Autonomous. Self-Healing. Unstoppable.</b></p>
+  <img src="sharanbot_logo.svg" alt="SharanAGI" width="300">
+  <h1>SharanAGI — The Digital Human</h1>
+  <p><b>Autonomous. Self-Healing. Self-Learning. Unstoppable.</b></p>
   <p>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-    <img src="https://img.shields.io/badge/version-0.1.4-orange" alt="Version">
+    <img src="https://img.shields.io/badge/version-0.6.0-orange" alt="Version">
     <img src="https://img.shields.io/badge/agents-32-red" alt="Agents">
-    <img src="https://img.shields.io/badge/tools-17-purple" alt="Tools">
+    <img src="https://img.shields.io/badge/tools-24-purple" alt="Tools">
     <img src="https://img.shields.io/badge/channels-11-teal" alt="Channels">
+    <img src="https://img.shields.io/badge/AGI_modules-8-gold" alt="AGI">
     <a href="https://github.com/airajakathi/Sharanbot"><img src="https://img.shields.io/github/stars/airajakathi/Sharanbot?style=social" alt="Stars"></a>
   </p>
 </div>
 
 ---
 
-**SharanBot** is an autonomous AI agent framework that commands a team of 32 specialist agents, self-heals from any error, learns from its mistakes, and gets the job done — no hand-holding required.
+**SharanAGI** (formerly SharanBot) is an autonomous AI agent framework that doesn't just respond — it thinks, patrols, learns, asks for help, and manages multiple projects like a real human developer. It commands 32 specialist agents, self-heals from any error, accumulates knowledge over time, and knows when to escalate to you.
 
-Built for builders who want an AI that acts like a **demon boss**: fierce, relentless, and in total control.
+Built for builders who want an AI that acts like a **digital human**: proactive, self-directed, and relentless.
 
-## What Makes SharanBot Different
+## What Makes SharanAGI Different
 
-| | Traditional Bots | SharanBot |
-|---|---|---|
-| **Error Handling** | Crashes and waits | Self-heals, auto-recovers, learns |
-| **Task Complexity** | Single-shot responses | DAG-based multi-agent orchestration |
-| **Adaptability** | Static behavior | Self-learning + adaptive cooldowns |
-| **Reliability** | Hope it works | Circuit breakers + 5-level retry |
-| **Evolution** | Redeploy to update | Hot-reload everything at runtime |
-| **Memory** | Forgets everything | Cross-session superhuman memory |
-| **Credentials** | Plaintext config | Encrypted vault (PBKDF2 + Fernet) |
-| **Monitoring** | Check logs manually | Real-time dashboard with WebSocket |
-| **Browser** | External dependency | Native Tandem Browser with 24 MCP tools |
+| | Traditional Bots | SharanBot v0.2 | SharanAGI v0.3 |
+|---|---|---|---|
+| **Initiative** | Waits for input | Waits for input | Watchdog patrols, finds work autonomously |
+| **Error Handling** | Crashes and waits | Self-heals, auto-recovers | Self-heals + stuck detection + smart escalation |
+| **Task Complexity** | Single-shot responses | DAG-based multi-agent | Multi-project orchestration with priority queue |
+| **Learning** | None | Error pattern memory | Full knowledge base + skill self-assessment |
+| **Human Interaction** | None | Text in/out | Human-in-the-loop escalation (CAPTCHA, 2FA, judgment) |
+| **Continuity** | Forgets everything | Cross-session memory | Persistent project context + auto-resume |
+| **Self-Awareness** | None | None | Confidence scoring + knows when to ask for help |
+
+## SharanAGI — The Digital Human Layer
+
+SharanAGI v0.3 adds 5 subsystems that close the gap between an AI agent and a real human developer:
+
+### 1. Watchdog / Patrol Mode (Initiative)
+A human doesn't wait to be told — they wake up, look around, and decide what needs doing. The Watchdog does the same:
+
+- **Periodic health patrols** — checks project health, tests, servers, error logs
+- **Incomplete work detection** — scans `.team_state/` for unfinished teams and resumes them
+- **Stale service monitoring** — detects auto-restart services that are down
+- **Learning store analysis** — finds recurring unresolved errors
+- **Auto-action** — acts on critical findings autonomously, notifies on warnings
+- Runs as a background asyncio task alongside the gateway
+
+### 2. Human-in-the-Loop Escalation (Real-World Handling)
+A human knows when to ask a colleague for help. SharanAGI does the same:
+
+- **CAPTCHA escalation** — detects CAPTCHAs via page text analysis, sends screenshot to user, waits for solution
+- **2FA/Verification** — detects phone/email verification prompts, asks user to complete
+- **Judgment calls** — when confidence is low, asks user to confirm before proceeding
+- **Stuck escalation** — when going in circles, asks user for guidance
+- **Permission requests** — asks before destructive or irreversible actions
+- Works across all channels — sends to user's active Telegram/Discord/WhatsApp/etc.
+- Async ask/wait/respond pattern with configurable timeout (default 5 min)
+
+### 3. Persistent Project Context (Multi-Project Management)
+A human juggles multiple projects, remembers context for each, and prioritizes by deadline:
+
+- **Project registry** — persistent catalog with metadata, tech stack, tags
+- **Per-project memory** — accumulated context, key decisions, TODOs per project
+- **Priority queue** — deadline-aware prioritization (urgent deadlines → pending TODOs → least recently worked)
+- **Cross-project knowledge** — search patterns and solutions across all projects
+- **Status tracking** — active, paused, completed, archived
+
+### 4. Knowledge Accumulation (Proactive Learning)
+A human reads docs, builds expertise, and knows what they're good at:
+
+- **Knowledge base** — persistent technical knowledge that grows over time (not just error patterns)
+- **Study agent** — LLM-powered knowledge extraction from documentation and text
+- **Skill self-assessment** — tracks task outcomes per domain, auto-levels (novice → expert)
+- **Pre-task study check** — "I don't know Kubernetes well enough, let me study first"
+- **Prompt injection** — relevant knowledge automatically injected into agent prompts
+- **Tag-based search** — find knowledge by topic, tags, or content
+
+### 5. Stuck Detection + Smart Escalation (Self-Awareness)
+A human knows when they're going in circles. SharanAGI does the same:
+
+- **4 detection methods**: exact repetition, error streak, oscillation (A→B→A→B), high error rate
+- **Confidence scoring** — hedge phrase detection, tool success rate weighting
+- **Automatic warnings** — injected into agent loop every 5 iterations when stuck
+- **Escalation trigger** — when confidence drops below threshold, asks user for help
+- **Context building** — builds detailed "what was tried" context for escalation messages
 
 ## Core Powers
 
@@ -61,6 +113,26 @@ Goes beyond reactive routing — the autopilot **anticipates** what you need:
 - **Memory-driven decisions**: Injects accumulated intelligence into routing analysis
 - **Proactive suggestions**: Recommends next actions based on your workflow patterns
 - **Learning-store-aware**: Avoids strategies that previously failed
+
+### Vibe-Coding Engine (v0.6)
+Modern project building toolkit — scaffold, preview, test, and deploy apps from natural language:
+- **TemplateEngine** (`scaffold_project`) — 12 modern templates: Next.js, Vite+React, Flutter, Expo, Django, Docker full-stack. Real CLI scaffolders with rich fallbacks.
+- **GitTool** (`git`) — Structured git: init, status, diff, add, commit, branch, checkout, log, push, pull, stash, reset, tag.
+- **LivePreview** (`live_preview`) — Auto-detect framework → install deps → start server → browser → screenshot. One tool call.
+- **PackageManager** (`package_manager`) — Unified deps across 10 managers (npm/yarn/pnpm/pip/uv/poetry/flutter/cargo/go).
+- **TestRunner** (`test_runner`) — Parsed test results for pytest/jest/vitest/flutter/cargo/go.
+- **Deploy** (`deploy`) — One-command deploy to Vercel, Netlify, Docker. Auto-detects target.
+
+### Self-Evolution Engine (v0.5)
+The **real** self-improving AI — not marketing, not dogfooding, actual autonomous self-modification:
+- **Self-Diagnosis** — Analyzes error patterns, stuck patterns, performance metrics, and circuit breaker states to identify what needs improving
+- **LLM-Powered Planning** — Turns diagnoses into concrete code changes (not just bug reports)
+- **Safe Self-Modification** — Git checkpoint → modify → test → rollback-if-failed → commit-if-passed
+- **Growth Tracking** — Persistent log of all evolution attempts, new capabilities added, success rates
+- **Automatic Triggers** — Background task failures automatically trigger evolution cycles
+- **Safety Boundaries** — Cannot modify security, vault, auth, or safety code
+- **Rate Limited** — Max 1 cycle per 10 minutes, max 20 per day
+- **Human Approval** — High-risk changes to core code require approval before execution
 - Routes to **direct** (simple) → **subagent** (moderate) → **full team** (complex)
 
 ### Encrypted Vault
@@ -259,17 +331,27 @@ SharanBot includes **32 specialist agent profiles** (3 built-in + 29 plugin-base
 | `reload` | Hot-reload tools & config |
 | `dynamic` | Dynamic tool loading from workspace |
 | `import_agent` | Import & compose agent code |
+| `agi` | SharanAGI human-like capabilities (projects, knowledge, escalation, stuck detection, self-evolution) |
 
 ## Architecture
 
 ```
-SharanBot
+SharanAGI
 ├── Gateway ──────────── Port 18790 (configurable)
 │   ├── Agent Loop ───── LLM ↔ Tool execution cycle
 │   │   ├── RecoveryEngine ─ Circuit breakers + auto-recovery
 │   │   ├── LearningStore ── Persistent error memory
 │   │   ├── Autopilot ────── Proactive routing + superhuman memory
-│   │   └── Context ──────── System prompt + memory consolidation
+│   │   ├── Context ──────── System prompt + memory consolidation
+│   │   └── AGI Layer ────── Digital human capabilities
+│   │       ├── StuckDetector ── Circular attempt + error streak detection
+│   │       ├── ConfidenceScorer ── Hedge phrase + success rate scoring
+│   │       ├── KnowledgeBase ──── Persistent technical knowledge
+│   │       ├── ProjectManager ─── Multi-project context + priorities
+│   │       ├── EscalationMgr ──── Human-in-the-loop ask/wait/respond
+│   │       ├── ReactionEngine ─── Event-driven auto-handling + retry
+│   │       ├── Observer ────────── Structured metrics + traces + health
+│   │       └── EvolutionEngine ── Self-diagnosis → plan → modify → test → grow
 │   ├── Team Orchestrator ─ DAG-based multi-agent execution
 │   │   ├── 32 Agent Profiles
 │   │   ├── Task Planner ──── LLM-powered decomposition
@@ -280,14 +362,15 @@ SharanBot
 │   ├── Workers ───────── GSD-2 background processes
 │   ├── Subagents ─────── Background task execution (3 nesting levels)
 │   └── Self-Evolution ── Hot-reload everything at runtime
+├── Watchdog Patrol ──── Background health checks + auto-action
 ├── Dashboard ────────── Port 18795 — Real-time web UI (WebSocket)
 ├── Tandem Browser ───── Native Electron browser
 │   ├── Wingman Panel ─── AI chat + activity + screenshots + dashboard
-│   ├── OpenClaw Bridge ─ Port 18789 — WebSocket link to SharanBot
+│   ├── OpenClaw Bridge ─ Port 18789 — WebSocket link to SharanAGI
 │   ├── Browser API ───── Port 8766 — REST + SSE (250+ endpoints)
 │   ├── Computer Tool ─── Coordinate-based mouse/keyboard/screenshot
 │   └── MCP Server ────── 24 browser automation tools
-├── Tools ─────────────── 17 built-in tools + MCP extensions
+├── Tools ─────────────── 18 built-in tools + MCP extensions
 ├── Providers ─────────── 20+ LLM providers with 5-level retry
 └── Channels ──────────── 11 chat platforms
 ```
@@ -403,6 +486,15 @@ sharanbot/
 │   └── openclaw_bridge.py # WebSocket bridge (port 18789)
 ├── vault/                 # Encrypted credential store
 ├── services/              # Autonomous service manager
+├── agi/                   # SharanAGI digital human layer
+│   ├── watchdog.py        # Proactive patrol mode
+│   ├── escalation.py      # Human-in-the-loop escalation
+│   ├── projects.py        # Multi-project context management
+│   ├── knowledge.py       # Knowledge accumulation + skill assessment
+│   ├── stuck.py           # Stuck detection + confidence scoring
+│   ├── reactions.py       # Event-driven reaction engine
+│   ├── observability.py   # Structured metrics + traces + health
+│   └── evolution.py       # Self-evolution: diagnose → plan → modify → test → grow
 ├── dashboard/             # Real-time web UI + WebSocket
 ├── providers/             # 20+ LLM providers
 ├── channels/              # 11 chat platforms
@@ -432,7 +524,7 @@ MIT — see [LICENSE](./LICENSE).
 ---
 
 <div align="center">
-  <p><b>SharanBot doesn't ask for permission. It gets the job done.</b></p>
+  <p><b>SharanAGI doesn't just respond. It thinks, patrols, learns, and gets the job done.</b></p>
   <p>
     <a href="https://github.com/airajakathi/Sharanbot">
       <img src="https://img.shields.io/github/stars/airajakathi/Sharanbot?style=for-the-badge&color=ff2200" alt="Stars">

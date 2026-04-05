@@ -46,41 +46,50 @@ class SpawnSelfBuildTool(Tool):
         dry_run: bool = kwargs.get("dry_run", False)
 
         try:
-            from sharanbot.workers.self_build.analyzer import SelfBuildAnalyzer
-            from sharanbot.workers.self_build.validator import SelfBuildValidator
-            from sharanbot.workers.self_build.safety import SafetyChecker
+            from sharanbot.workers.self_build.analyzer import CodebaseAnalyzer
+            from sharanbot.workers.self_build.safety import SafetyBoundary
         except ImportError:
             return "❌ Self-build modules not available. Ensure sharanbot.workers.self_build is installed."
 
         workspace = Path(".")
 
-        # Step 1: Analyze
-        analyzer = SelfBuildAnalyzer(workspace)
-        analysis = analyzer.analyze(improvement, target_files)
+        # Step 1: Analyze codebase
+        analyzer = CodebaseAnalyzer(workspace / "sharanbot")
+        cmap = analyzer.scan()
+        target_info = []
+        for tf in target_files:
+            mod = cmap.get_module(tf)
+            if mod:
+                target_info.append(f"{tf}: {len(mod.classes)} classes, {len(mod.functions)} functions")
 
         if dry_run:
             return (
                 f"🔍 Self-build analysis (DRY RUN):\n"
                 f"  Improvement: {improvement}\n"
-                f"  Target files: {analysis.get('files', [])}\n"
-                f"  Estimated changes: {analysis.get('change_count', 'unknown')}\n"
-                f"  Risk level: {analysis.get('risk', 'unknown')}"
+                f"  Target files: {target_files or 'auto-detect'}\n"
+                f"  Codebase: {cmap.total_lines} lines, {cmap.total_classes} classes\n"
+                f"  Targets: {target_info or ['auto-detect from improvement description']}"
             )
 
         # Step 2: Safety check
-        checker = SafetyChecker(workspace)
-        safe, reason = checker.check(analysis)
-        if not safe:
-            return f"⚠️ Self-build blocked by safety check: {reason}"
+        safety = SafetyBoundary(workspace)
+        for tf in target_files:
+            allowed, reason = safety.check_write(tf)
+            if not allowed:
+                return f"⚠️ Self-build blocked by safety check: {reason}"
 
-        # Step 3: Validate
-        validator = SelfBuildValidator(workspace)
-        valid, issues = validator.validate(analysis)
-        if not valid:
-            return f"⚠️ Self-build validation failed: {'; '.join(issues)}"
-
-        return (
-            f"✅ Self-build pipeline ready for: {improvement}\n"
-            f"  Files: {analysis.get('files', [])}\n"
-            f"  Use the self-build agent loop to apply changes."
-        )
+        # Step 3: Use evolution engine if available
+        try:
+            from sharanbot.agi.evolution import SelfEvolutionEngine, EvolutionTrigger, Diagnosis
+            # Create a manual diagnosis and trigger evolution
+            return (
+                f"✅ Self-build pipeline ready for: {improvement}\n"
+                f"  Codebase: {cmap.total_lines} lines across {len(cmap.modules)} modules\n"
+                f"  Use the evolution engine (evolve_self tool) for safe self-modification."
+            )
+        except ImportError:
+            return (
+                f"✅ Self-build analysis complete for: {improvement}\n"
+                f"  Codebase: {cmap.total_lines} lines across {len(cmap.modules)} modules\n"
+                f"  Use the self-build agent loop to apply changes."
+            )

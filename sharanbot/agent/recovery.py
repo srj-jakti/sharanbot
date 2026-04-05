@@ -128,13 +128,14 @@ class RecoveryEngine:
     ]
 
     # Max failures before circuit opens per category
+    # Tuned higher for API/timeout to tolerate slow providers (e.g., Kimi)
     _CIRCUIT_THRESHOLDS: dict[ErrorCategory, int] = {
         ErrorCategory.RATE_LIMIT: 5,
-        ErrorCategory.API_ERROR: 3,
+        ErrorCategory.API_ERROR: 8,
         ErrorCategory.MCP_FAILURE: 3,
         ErrorCategory.TOOL_ERROR: 5,
         ErrorCategory.STUCK_WORKER: 2,
-        ErrorCategory.TIMEOUT: 3,
+        ErrorCategory.TIMEOUT: 8,
         ErrorCategory.PERMISSION_ERROR: 2,
         ErrorCategory.REPEATED_FAILURE: 3,
         ErrorCategory.IMPORT_ERROR: 5,
@@ -231,10 +232,13 @@ class RecoveryEngine:
     def reset_circuit(self, component: str) -> None:
         """Reset circuit breaker after successful recovery."""
         circuit = self.get_circuit(component)
+        was_open = circuit.is_open
         circuit.failures = 0
         circuit.is_open = False
         circuit.cooldown = 30.0
-        logger.info("Circuit reset for {}", component)
+        # Only log on actual state transition (open→closed) to avoid log spam
+        if was_open:
+            logger.info("Circuit recovered for {}", component)
 
     # ------------------------------------------------------------------
     # Recovery Execution

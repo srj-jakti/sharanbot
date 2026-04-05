@@ -1,1 +1,0 @@
-['command', 'args', 'env', 'cwd', 'encoding', 'encoding_error_handler']

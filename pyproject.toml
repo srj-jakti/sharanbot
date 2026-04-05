@@ -1,7 +1,7 @@
 [project]
 name = "sharanbot-ai"
-version = "0.2.0"
-description = "A lightweight personal AI assistant framework"
+version = "0.9.1"
+description = "SharanAGI — autonomous digital human AI agent framework"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -84,6 +84,7 @@ allow-direct-references = true
 include = [
     "sharanbot/**/*.py",
     "sharanbot/templates/**/*.md",
+    "sharanbot/templates/**/*.yaml",
     "sharanbot/skills/**/*.md",
     "sharanbot/skills/**/*.sh",
 ]
@@ -115,6 +116,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 filterwarnings = [
     # Third-party deprecations we cannot fix (lark_oapi / websockets / pkg_resources)

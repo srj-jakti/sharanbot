@@ -568,7 +568,7 @@ class DashboardServer:
         integrations: dict[str, Any] = {"mcp_servers": [], "mcp_connected": False, "tools": 0, "skills": 0}
         if hasattr(self.agent, "_mcp_servers"):
             integrations["mcp_servers"] = list(self.agent._mcp_servers.keys())
-            integrations["mcp_connected"] = self.agent._mcp_connected
+            integrations["mcp_connected"] = getattr(self.agent, "_mcp_connected", bool(self.agent._mcp_servers))
         if hasattr(self.agent, "tools"):
             integrations["tools"] = len(self.agent.tools.tool_names)
         if hasattr(self.agent, "context") and hasattr(self.agent.context, "skills"):

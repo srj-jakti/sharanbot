@@ -26,6 +26,10 @@ class TaskNode:
     quality_gate: bool = False  # requires QA before proceeding
     on_fail_goto: str | None = None  # task to retry on QA failure
     metadata: dict[str, Any] = field(default_factory=dict)
+    lineage: list[str] = field(default_factory=list)  # ancestor task descriptions (root→parent)
+    # Task-based communication: stores steering messages and status updates
+    comments: list[dict[str, Any]] = field(default_factory=list)
+    _last_read_index: int = 0  # per-agent read cursor (reset on assignment)
 
     @property
     def duration_s(self) -> float | None:
@@ -132,6 +136,17 @@ class TaskDAG:
     def get_task(self, task_id: str) -> TaskNode | None:
         return self.tasks.get(task_id)
 
+    def get_siblings(self, task_id: str) -> list[str]:
+        """Get descriptions of sibling tasks (same dependency set, excluding self)."""
+        task = self.tasks.get(task_id)
+        if not task:
+            return []
+        return [
+            t.description
+            for t in self.tasks.values()
+            if t.id != task_id and set(t.depends_on) == set(task.depends_on)
+        ]
+
     def topological_order(self) -> list[str]:
         """Return task IDs in topological order (Kahn's algorithm).
 
@@ -194,8 +209,12 @@ class TaskDAG:
         return "\n".join(lines)
 
     @classmethod
-    def from_plan(cls, plan: list[dict]) -> "TaskDAG":
+    def from_plan(cls, plan: list[dict], lineage: list[str] | None = None) -> "TaskDAG":
         """Create a DAG from a list of task dicts (from LLM planner).
+
+        Args:
+            plan: List of task dictionaries from the LLM.
+            lineage: Ancestor task descriptions to attach to each node.
 
         Raises ValueError if the plan contains invalid dependency references
         or circular dependencies.
@@ -221,6 +240,7 @@ class TaskDAG:
                 quality_gate=item.get("quality_gate", False),
                 max_retries=item.get("max_retries", 3),
                 on_fail_goto=item.get("on_fail", None),
+                lineage=list(lineage) if lineage else [],
             ))
         # Validate no circular dependencies
         dag._check_cycles()

@@ -26,11 +26,15 @@ For each subtask, output a JSON object with:
 Available agent profiles:
 {profiles}
 
+{lineage_context}
+
 IMPORTANT RULES:
 - Tasks that CAN run in parallel SHOULD have no dependency on each other
 - Keep the number of tasks reasonable (3-8 for most projects)
 - Use the most appropriate specialist profile for each task
 - Always include a final review/integration task
+- Each subtask should represent real, distinct work — do NOT pad with extra subtasks
+- Do NOT create subtasks that overlap or restate each other
 - Output ONLY a JSON array, no other text
 
 Task to decompose:
@@ -50,14 +54,36 @@ class TaskPlanner:
         self.model = model
         self.profile_registry = profile_registry
 
-    async def decompose(self, task: str, max_attempts: int = 3) -> TaskDAG:
+    async def decompose(self, task: str, max_attempts: int = 3, lineage: list[str] | None = None) -> TaskDAG:
         """Break a complex task into a DAG of subtasks using the LLM.
+
+        Args:
+            task: The task description to decompose.
+            max_attempts: Number of retries for invalid plans.
+            lineage: Ancestor task descriptions (root→parent) for context.
 
         Retries up to *max_attempts* times when the generated plan has
         invalid dependency references or circular dependencies.
         """
         profiles_desc = self._format_profiles()
-        prompt = _DECOMPOSE_PROMPT.format(profiles=profiles_desc, task=task)
+
+        # Build lineage context for the LLM
+        lineage_context = ""
+        if lineage:
+            hierarchy = []
+            for i, desc in enumerate(lineage):
+                hierarchy.append(f"{'  ' * i}{i}. {desc}")
+            hierarchy.append(f"{'  ' * len(lineage)}{len(lineage)}. {task}  <-- (this task)")
+            lineage_context = (
+                "Task Hierarchy (this task is part of a larger plan):\n"
+                + "\n".join(hierarchy)
+                + "\n\nStay focused on decomposing ONLY this specific task. "
+                "Do not duplicate work that ancestor or sibling tasks handle."
+            )
+
+        prompt = _DECOMPOSE_PROMPT.format(
+            profiles=profiles_desc, task=task, lineage_context=lineage_context,
+        )
 
         messages = [
             {"role": "system", "content": "You are a task planning assistant. Output only valid JSON."},

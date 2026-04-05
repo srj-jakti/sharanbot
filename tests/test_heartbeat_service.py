@@ -249,7 +249,7 @@ async def test_decide_retries_transient_error_then_succeeds(tmp_path, monkeypatc
     assert action == "run"
     assert tasks == "check open tasks"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [2]
 
 
 @pytest.mark.asyncio

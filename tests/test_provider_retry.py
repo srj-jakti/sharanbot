@@ -42,7 +42,7 @@ async def test_chat_with_retry_retries_transient_error_then_succeeds(monkeypatch
     assert response.finish_reason == "stop"
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [2]
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_chat_with_retry_returns_final_error_after_retries(monkeypatch) ->
 
     assert response.content == "503 final server error"
     assert provider.calls == 6
-    assert delays == [1, 2, 4, 8, 16]
+    assert delays == [2, 4, 8, 16, 30]
 
 
 @pytest.mark.asyncio

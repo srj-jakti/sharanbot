@@ -31,6 +31,20 @@ def _derive_key(password: str, salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(raw)
 
 
+def _xor_encode(plaintext: str, key: bytes) -> str:
+    """XOR obfuscation fallback — NOT real encryption, just basic obfuscation."""
+    data = plaintext.encode("utf-8")
+    xored = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+    return base64.urlsafe_b64encode(xored).decode("ascii")
+
+
+def _xor_decode(ciphertext: str, key: bytes) -> str:
+    """Reverse XOR obfuscation."""
+    xored = base64.urlsafe_b64decode(ciphertext.encode("ascii"))
+    data = bytes(b ^ key[i % len(key)] for i, b in enumerate(xored))
+    return data.decode("utf-8")
+
+
 class Vault:
     """Encrypted key-value credential store.
 
@@ -128,26 +142,23 @@ class Vault:
 
     def _encrypt(self, plaintext: str) -> str:
         assert self._key is not None
-        if not _HAS_FERNET:
-            raise RuntimeError(
-                "Vault encryption requires the 'cryptography' package. "
-                "Install it with: pip install cryptography"
-            )
-        f = Fernet(self._key)
-        return f.encrypt(plaintext.encode()).decode()
+        if _HAS_FERNET:
+            f = Fernet(self._key)
+            return f.encrypt(plaintext.encode()).decode()
+        # XOR obfuscation fallback when cryptography is not installed
+        logger.warning("Vault: using XOR obfuscation (install 'cryptography' for real encryption)")
+        return _xor_encode(plaintext, self._key)
 
     def _decrypt(self, ciphertext: str) -> str:
         assert self._key is not None
-        if not _HAS_FERNET:
-            raise RuntimeError(
-                "Vault decryption requires the 'cryptography' package. "
-                "Install it with: pip install cryptography"
-            )
-        try:
-            f = Fernet(self._key)
-            return f.decrypt(ciphertext.encode()).decode()
-        except Exception as e:
-            raise ValueError(f"Vault decryption failed (corrupted or wrong password): {e}") from e
+        if _HAS_FERNET:
+            try:
+                f = Fernet(self._key)
+                return f.decrypt(ciphertext.encode()).decode()
+            except Exception as e:
+                raise ValueError(f"Vault decryption failed (corrupted or wrong password): {e}") from e
+        # XOR obfuscation fallback
+        return _xor_decode(ciphertext, self._key)
 
     # ------------------------------------------------------------------
     # Persistence

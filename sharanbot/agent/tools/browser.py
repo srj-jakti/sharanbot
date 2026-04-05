@@ -196,7 +196,23 @@ class BrowserTool(Tool):
         resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
         status = resp.status if resp else "unknown"
         title = await self._page.title()
-        return f"Navigated to {url}\nStatus: {status}\nTitle: {title}"
+        result = f"Navigated to {url}\nStatus: {status}\nTitle: {title}"
+
+        # SharanAGI: detect if page requires human help (CAPTCHA, 2FA, etc.)
+        try:
+            from sharanbot.agi.escalation import detect_escalation_need
+            page_text = await self._page.inner_text("body")
+            escalation_type = detect_escalation_need(page_text[:5000])
+            if escalation_type:
+                result += (
+                    f"\n\n⚠️ ESCALATION NEEDED: Detected {escalation_type.value} on this page. "
+                    f"Use the agi tool with action='ask_human' to ask the user for help. "
+                    f"Take a screenshot first so the user can see what you're seeing."
+                )
+        except Exception:
+            pass
+
+        return result
 
     async def _screenshot(self, full_page: bool = False, **_: Any) -> Any:
         self._screenshots_dir.mkdir(parents=True, exist_ok=True)
@@ -241,6 +257,19 @@ class BrowserTool(Tool):
             text = await el.inner_text()
         else:
             text = await self._page.inner_text("body")
+
+        # SharanAGI: detect escalation needs in page content
+        try:
+            from sharanbot.agi.escalation import detect_escalation_need
+            escalation_type = detect_escalation_need(text[:5000])
+            if escalation_type:
+                text += (
+                    f"\n\n⚠️ ESCALATION NEEDED: Detected {escalation_type.value} on this page. "
+                    f"Use the agi tool with action='ask_human' to ask the user for help."
+                )
+        except Exception:
+            pass
+
         # Truncate for context window
         if len(text) > 15000:
             text = text[:15000] + "\n\n... [truncated, use a more specific selector]"

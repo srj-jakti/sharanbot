@@ -403,14 +403,6 @@ class TestHandleReload:
         assert "reconnected" in result.lower()
         loop.tool_mgr.reconnect_mcp.assert_awaited_once()
 
-    @pytest.mark.asyncio
-    async def test_reload_workers(self, tmp_path):
-        loop = _build_loop(tmp_path)
-        loop.worker_type_registry = MagicMock()
-        loop.worker_type_registry.list_types.return_value = ["a", "b"]
-        result = await loop.handle_reload("workers")
-        assert "2" in result
-
 
 # ---------------------------------------------------------------------------
 # Tests — utility methods

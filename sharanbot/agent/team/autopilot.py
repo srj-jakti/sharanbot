@@ -32,6 +32,12 @@ if TYPE_CHECKING:
     from sharanbot.agent.subagent import SubagentManager
     from sharanbot.agent.team.orchestrator import TeamOrchestrator
 
+MODE_B_ALLOWLIST = frozenset({
+    "team_create", "team_status", "team_steer",
+    "read_file", "list_dir", "web_search", "web_fetch",
+    "wait",
+})
+
 _ANALYSIS_PROMPT = """\
 Analyze this task and determine the best execution strategy.
 
@@ -40,9 +46,15 @@ Task: {task}
 {memory_context}
 
 Choose ONE strategy:
-1. "direct" — Simple task, answer directly (questions, quick edits, lookups)
-2. "single_agent" — Moderate task, spawn one specialist subagent (focused coding, research)
-3. "team" — Complex task needing multiple specialists (full features, multi-step projects)
+1. "direct" — Simple task, answer directly (questions, quick edits, lookups, casual chat)
+2. "single_agent" — Moderate task, spawn one specialist subagent (single-file edits, focused research, small scripts)
+3. "team" — Complex task needing multiple specialists (building apps, full features, multi-file projects, games, websites with multiple pages, anything that involves creating 3+ files or multiple components)
+
+IMPORTANT routing rules:
+- If the task involves BUILDING or CREATING a project, app, game, website, or system → ALWAYS use "team"
+- If the task involves multiple files, components, or technologies → use "team"
+- Only use "single_agent" for tasks that a single specialist can complete in one focused session (e.g., write one script, fix one bug, research one topic)
+- When in doubt between single_agent and team, choose "team"
 
 Also determine:
 - complexity: "low", "medium", "high"
@@ -260,6 +272,61 @@ class Autopilot:
     Hierarchy: SharanBot (Boss) -> Autopilot (Executor) -> Workers/Tools/Teams
     """
 
+    # Human-readable tool name mapping for progress updates
+    _TOOL_DISPLAY_NAMES: dict[str, str] = {
+        "mcp_filesystem_write_file": "Writing file",
+        "mcp_filesystem_read_file": "Reading file",
+        "mcp_filesystem_edit_file": "Editing file",
+        "mcp_filesystem_list_directory": "Listing directory",
+        "mcp_filesystem_create_directory": "Creating directory",
+        "write_file": "Writing file",
+        "read_file": "Reading file",
+        "edit_file": "Editing file",
+        "list_dir": "Listing directory",
+        "exec": "Running command",
+        "web_search": "Searching the web",
+        "web_fetch": "Fetching web page",
+        "browser": "Using browser",
+        "screenshot": "Taking screenshot",
+        "team_create": "Creating team",
+        "team_status": "Checking team status",
+        "team_steer": "Steering team",
+        "spawn": "Spawning subagent",
+        "worker_start": "Starting worker",
+        "worker_status": "Checking worker",
+        "worker_steer": "Steering worker",
+        "create_software": "Generating code",
+        "scaffold_project": "Scaffolding project",
+        "process_start": "Starting process",
+        "process_stop": "Stopping process",
+        "process_status": "Checking process",
+        "port_check": "Checking port",
+        "wait_for_port": "Waiting for port",
+        "sandbox": "Running in sandbox",
+        "git": "Git operation",
+        "test_runner": "Running tests",
+        "package_manager": "Managing packages",
+        "deploy": "Deploying",
+        "format_code": "Formatting code",
+        "design_to_code": "Converting design to code",
+        "database": "Database operation",
+        "template_engine": "Using template",
+        "live_preview": "Live preview",
+        "agi": "AGI operation",
+    }
+
+    @classmethod
+    def _humanize_tool_name(cls, tool_name: str) -> str:
+        """Convert a raw tool name to a human-readable description."""
+        if tool_name in cls._TOOL_DISPLAY_NAMES:
+            return cls._TOOL_DISPLAY_NAMES[tool_name]
+        # Try prefix matching for MCP tools
+        if tool_name.startswith("mcp_"):
+            parts = tool_name.split("_", 2)
+            if len(parts) >= 3:
+                return f"{parts[1].title()}: {parts[2].replace('_', ' ')}"
+        return tool_name.replace("_", " ").title()
+
     def __init__(
         self,
         provider: LLMProvider,
@@ -431,8 +498,19 @@ class Autopilot:
         task_lower = task.lower().strip()
         word_count = len(task.split())
 
-        # Very short messages → direct
+        # Very short messages → direct (casual chat or quick command)
+        # But skip if it contains action verbs that suggest a real task (3+ words)
         if word_count <= 5:
+            if word_count >= 3:
+                action_verbs = {
+                    "build", "create", "make", "develop", "implement", "deploy",
+                    "setup", "install", "configure", "fix", "debug", "refactor",
+                    "design", "write", "code", "generate", "research", "analyze",
+                    "scrape", "download", "upload", "search", "find",
+                }
+                has_action = any(w in action_verbs for w in task_lower.split())
+                if has_action:
+                    return None  # Let LLM decide — short but looks like a task
             return AutopilotDecision(
                 strategy="direct", complexity="low",
                 suggested_profile="general", suggested_pipeline="auto",
@@ -447,13 +525,34 @@ class Autopilot:
                 reasoning="Simple question, answer directly.",
             )
 
-        # Greetings and simple commands
-        greetings = {"hello", "hi", "hey", "thanks", "thank you", "ok", "bye", "status"}
-        if task_lower.strip("!., ") in greetings:
+        # Greetings, casual chat, and simple commands
+        greetings = {
+            "hello", "hi", "hey", "thanks", "thank you", "ok", "bye",
+            "status", "sup", "yo", "good morning", "good night",
+            "how are you", "whats up", "what's up", "hows it going",
+            "how's it going", "nice", "cool", "great", "awesome",
+            "lol", "haha", "bruh", "nah", "yep", "yeah", "nope",
+        }
+        if task_lower.strip("!?., ") in greetings:
             return AutopilotDecision(
                 strategy="direct", complexity="low",
                 suggested_profile="general", suggested_pipeline="auto",
-                reasoning="Greeting or simple command.",
+                reasoning="Greeting or casual chat.",
+            )
+
+        # Casual conversation patterns → direct
+        casual_patterns = [
+            "how are you", "what do you think", "tell me about yourself",
+            "what's your", "do you like", "can you chat", "just chatting",
+            "nothing much", "never mind", "forget it", "that's fine",
+            "sounds good", "makes sense", "got it", "understood",
+            "what do you recommend", "any suggestions", "your opinion",
+        ]
+        if any(pat in task_lower for pat in casual_patterns):
+            return AutopilotDecision(
+                strategy="direct", complexity="low",
+                suggested_profile="general", suggested_pipeline="auto",
+                reasoning="Casual conversation, respond directly.",
             )
 
         # Complex indicators → team
@@ -464,7 +563,7 @@ class Autopilot:
             "research and implement", "design and build",
             "multiple files", "refactor the entire",
         ]
-        if any(ind in task_lower for ind in complex_indicators) and word_count > 15:
+        if any(ind in task_lower for ind in complex_indicators) and word_count > 8:
             return AutopilotDecision(
                 strategy="team", complexity="high",
                 suggested_profile="coder", suggested_pipeline="auto",
@@ -503,15 +602,39 @@ class Autopilot:
         max_iterations = self.max_iterations
         final_result: str | None = None
         tools_used: list[str] = []
+        _consecutive_team_status = 0  # Track team_status polling loop
+
+        # ── Workspace resolution before any tool calls (Req 14) ──
+        if decision.strategy == "team":
+            # Mode B: workspace will be set by team_create → project_root
+            # Autopilot doesn't write files in Mode B, so no workspace needed
+            pass
+        else:
+            # Mode A: create workspace from task name
+            from sharanbot.agent.team.orchestrator import TeamOrchestrator
+
+            project_name = TeamOrchestrator._derive_project_name(task, "solo")
+            workspace = self.workspace / project_name if self.workspace else None
+            if workspace:
+                workspace.mkdir(parents=True, exist_ok=True)
+                # Update tool working directories to point to this workspace
+                for tool in self._tools._tools.values():
+                    # Filesystem tools (_FsTool subclasses) use _workspace
+                    if hasattr(tool, "_workspace"):
+                        tool._workspace = workspace
+                    # Shell/process tools use working_dir
+                    if hasattr(tool, "working_dir"):
+                        tool.working_dir = str(workspace)
+                logger.info("Mode A workspace resolved: {}", workspace)
 
         try:
           while iteration < max_iterations:
             iteration += 1
 
-            # Token management: summarize at 80%
+            # Token management: summarize at 60%
             if iteration % 5 == 0:
                 estimated = self._estimate_tokens(messages)
-                threshold = int(self._context_window_tokens * 0.80)
+                threshold = int(self._context_window_tokens * 0.60)
                 if estimated >= threshold:
                     messages = await self._summarize_execution(messages, iteration)
 
@@ -523,6 +646,15 @@ class Autopilot:
                         await on_progress(f"\u26a1 Autopilot working... (step {iteration}, {len(tools_used)} tool calls)")
                     except Exception:
                         pass
+
+            # Progress feedback: send periodic updates to user every 12 iterations
+            if on_progress and iteration % 12 == 0 and iteration > 1:
+                try:
+                    recent = tools_used[-3:] if tools_used else []
+                    hint = ", ".join(self._humanize_tool_name(t) for t in recent) if recent else "planning"
+                    await on_progress(f"🔄 Still working... (step {iteration}, recent: {hint})")
+                except Exception:
+                    pass
 
             # Mid-task subconscious sync: lightweight diff check (no LLM call)
             # Mirrors claude-subconscious PreToolUse hook — just checks if background
@@ -539,7 +671,15 @@ class Autopilot:
                 except Exception as e:
                     logger.debug("Autopilot mid-task sync skipped: {}", e)
 
-            tool_defs = self._tools.get_definitions()
+            if decision.strategy == "team":
+                # Mode B: allowlist filtering at tool-definitions level
+                tool_defs = [
+                    t for t in self._tools.get_definitions()
+                    if t.get("function", {}).get("name") in MODE_B_ALLOWLIST
+                ]
+            else:
+                # Mode A: full tool access
+                tool_defs = self._tools.get_definitions()
 
             try:
                 response = await self.provider.chat_with_retry(
@@ -583,6 +723,23 @@ class Autopilot:
                         "name": tool_call.name,
                         "content": result,
                     })
+
+                    # Detect team_status polling loop and inject corrective hint
+                    if tool_call.name == "team_status":
+                        _consecutive_team_status += 1
+                        if _consecutive_team_status >= 2:
+                            messages.append({
+                                "role": "user",
+                                "content": (
+                                    "[System] You have called team_status multiple times without calling team_steer. "
+                                    "team_status only CHECKS status — it does NOT execute tasks. "
+                                    "You MUST call team_steer with the team_id to actually START executing subtasks. "
+                                    "Call team_steer NOW."
+                                ),
+                            })
+                            logger.warning("Autopilot: team_status polling detected ({} times), injecting team_steer hint", _consecutive_team_status)
+                    else:
+                        _consecutive_team_status = 0
             else:
                 final_result = response.content
                 break
@@ -610,6 +767,15 @@ class Autopilot:
                         except Exception:
                             logger.debug("Error closing tool {} in Autopilot", type(tool).__name__)
 
+        # Cancel any running teams on Autopilot exit to prevent zombie subagents
+        if decision.strategy == "team" and self._team_orchestrator:
+            for team_id, session in self._team_orchestrator.teams.items():
+                if session.status == "running":
+                    try:
+                        await self._team_orchestrator.cancel_team(team_id)
+                    except Exception as e:
+                        logger.debug("Failed to cancel team {} on exit: {}", team_id, e)
+
         logger.info(
             "Autopilot execution complete: {} iterations, {} tool calls",
             iteration, len(tools_used),
@@ -619,6 +785,58 @@ class Autopilot:
     def _build_executor_prompt(self, decision: AutopilotDecision) -> str:
         """Build the system prompt for Autopilot execution mode."""
         workspace_str = str(self.workspace) if self.workspace else "unknown"
+
+        # Strategy-specific instructions
+        if decision.strategy == "team":
+            strategy_block = f"""## TEAM STRATEGY (REQUIRED)
+You MUST use `team_create` to orchestrate this task. Do NOT try to do everything yourself.
+- Call `team_create` with a clear task description and pipeline="{decision.suggested_pipeline}"
+- The team system will spawn specialist subagents (frontend, backend, tester, etc.)
+
+### CRITICAL: Team Execution is AUTOMATIC
+After `team_create`, the team starts executing tasks AUTOMATICALLY in the background.
+- `team_create` → creates the team, decomposes into subtasks, AND starts execution
+- Use `team_status` to check progress (tasks take 2-10 minutes each)
+- Use `team_steer` to send guidance or course corrections to the team
+- Be PATIENT — complex tasks take time. Check status every 2-3 minutes.
+
+### Wait Time Rules
+- Use `wait(60)` for the first check after team_create
+- Use `wait(90)` for subsequent checks while tasks are in progress
+- NEVER use wait times longer than 120 seconds — it wastes time
+- If tasks are completing, check more frequently: `wait(60)`
+- If tasks are stalled, use `team_steer` to unblock, then `wait(90)`
+
+### ABSOLUTE RULE: DO NOT BUILD DIRECTLY
+When team strategy is active, you are the MANAGER, not the BUILDER.
+- Do NOT use create_software, scaffold_project, write_file, or exec to build project files
+- Do NOT use MCP filesystem tools to write project files
+- ONLY use: team_create, team_status, team_steer, and monitoring tools
+- The team subagents and GSD workers do the actual building
+- If you think the team is stuck after 5+ minutes, call team_steer with specific instructions
+- NEVER abandon the team and build directly — the team IS working in the background
+
+### NEVER GIVE UP ON THE TEAM
+- Do NOT produce a final text response saying you'll "build it yourself" or "do it solo"
+- Do NOT abandon the team even if some tasks fail — use team_steer to guide recovery
+- If the team completes with failures, report what succeeded and what failed
+- Your job is to MANAGE until the team finishes, then report results
+- The ONLY acceptable final response is a summary of what the team accomplished
+
+⚠️ DO NOT call `team_status` more than 2 times in a row without calling `team_steer`.
+   `team_status` only CHECKS status — `team_steer` sends guidance.
+
+- You may do small follow-up work yourself ONLY AFTER the team completes (e.g., final integration, testing)
+- If team_create fails, fall back to `spawn` to create individual subagents"""
+        elif decision.strategy == "single_agent":
+            strategy_block = f"""## SINGLE AGENT STRATEGY
+You are handling this task yourself as a specialist ({decision.suggested_profile}).
+- For larger subtasks, consider using `spawn` to delegate to a specialist subagent
+- Use tools directly for focused work"""
+        else:
+            strategy_block = """## DIRECT STRATEGY
+Handle this task directly — it's simple enough for a quick response."""
+
         return f"""# Autopilot Executor
 
 You are the Autopilot — SharanBot's autonomous executor and right hand.
@@ -636,6 +854,15 @@ SharanBot (the Boss) has delegated a task to you. Execute it completely and repo
 - Suggested profile: {decision.suggested_profile}
 - Suggested pipeline: {decision.suggested_pipeline}
 - Reasoning: {decision.reasoning}
+
+{strategy_block}
+
+## File Operations — IMPORTANT
+- Your workspace is: {workspace_str}
+- ALWAYS use native file tools (`write_file`, `edit_file`, `read_file`) for file operations
+- Do NOT use MCP filesystem tools (mcp_filesystem_write_file, etc.) — they resolve to a different path
+- When creating projects, use `scaffold_project` (has Spec Kit integration) instead of `create_software` when possible
+- All file paths should be relative to the workspace: e.g., "my-project/index.html"
 
 ## Execution Rules
 1. DO the work — don't explain how to do it. Use tools directly.

@@ -71,9 +71,11 @@ class TeamCreateTool(Tool):
                     task=task,
                     origin_channel=self._origin_channel,
                     origin_chat_id=self._origin_chat_id,
+                    auto_run=False,
                 )
-                # Override the auto-planned DAG with the template
+                # Override the auto-planned DAG with the template, then launch
                 self._orchestrator.teams[team_id].dag = dag
+                asyncio.create_task(self._orchestrator.run_team(team_id))
             else:
                 return f"Unknown pipeline '{pipeline}'. Available: {registry.list_templates()}"
         else:
@@ -83,15 +85,15 @@ class TeamCreateTool(Tool):
                 origin_chat_id=self._origin_chat_id,
             )
 
-        # Launch team execution in background
-        asyncio.create_task(self._orchestrator.run_team(team_id))
+        # Note: create_team already launches run_team in background (auto_run=True default)
 
         status = self._orchestrator.get_team_status(team_id)
         return (
-            f"Team created and running.\n\n{status}\n\n"
-            "⚠️ The team works in the background. Do NOT poll team_status in a loop. "
-            "Instead, continue working on other aspects of the project (e.g., create files, "
-            "write code directly) and check team_status only occasionally (every 5-10 tool calls)."
+            f"Team created and executing automatically in the background.\n\n{status}\n\n"
+            "The team is now working. Tasks take 2-10 minutes each.\n"
+            "Use team_status to check progress periodically (every 2-3 minutes).\n"
+            "Use team_steer to send guidance if needed.\n"
+            "Do NOT build directly — the team handles all file creation."
         )
 
 

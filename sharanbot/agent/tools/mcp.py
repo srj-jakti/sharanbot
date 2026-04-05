@@ -85,6 +85,8 @@ class MCPToolWrapper(Tool):
         raw_schema = tool_def.inputSchema or {"type": "object", "properties": {}}
         self._parameters = _normalize_schema_for_openai(raw_schema)
         self._tool_timeout = tool_timeout
+        self._consecutive_timeouts = 0
+        self._MAX_CONSECUTIVE_TIMEOUTS = 2
 
     @property
     def name(self) -> str:
@@ -101,14 +103,24 @@ class MCPToolWrapper(Tool):
     async def execute(self, **kwargs: Any) -> str:
         from mcp import types
 
+        # Circuit breaker: skip if this tool has timed out too many times
+        if self._consecutive_timeouts >= self._MAX_CONSECUTIVE_TIMEOUTS:
+            return (
+                f"(MCP tool '{self._name}' is temporarily disabled after "
+                f"{self._consecutive_timeouts} consecutive timeouts. "
+                f"Use a different approach.)"
+            )
+
         try:
             result = await asyncio.wait_for(
                 self._session.call_tool(self._original_name, arguments=kwargs),
                 timeout=self._tool_timeout,
             )
+            self._consecutive_timeouts = 0  # Reset on success
         except asyncio.TimeoutError:
-            logger.warning("MCP tool '{}' timed out after {}s", self._name, self._tool_timeout)
-            return f"(MCP tool call timed out after {self._tool_timeout}s)"
+            self._consecutive_timeouts += 1
+            logger.warning("MCP tool '{}' timed out after {}s ({}/{})", self._name, self._tool_timeout, self._consecutive_timeouts, self._MAX_CONSECUTIVE_TIMEOUTS)
+            return f"(MCP tool call timed out after {self._tool_timeout}s — {self._consecutive_timeouts}/{self._MAX_CONSECUTIVE_TIMEOUTS} before disable)"
         except asyncio.CancelledError:
             # MCP SDK's anyio cancel scopes can leak CancelledError on timeout/failure.
             # Re-raise only if our task was externally cancelled (e.g. /stop).

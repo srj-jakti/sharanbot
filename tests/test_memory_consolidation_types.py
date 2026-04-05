@@ -350,7 +350,7 @@ class TestMemoryConsolidationTypeHandling:
 
         assert result is True
         assert provider.calls == 2
-        assert delays == [1]
+        assert delays == [2]
 
     @pytest.mark.asyncio
     async def test_consolidation_delegates_to_provider_defaults(self, tmp_path: Path) -> None:

@@ -74,7 +74,7 @@ class LLMProvider(ABC):
     while maintaining a consistent interface.
     """
 
-    _CHAT_RETRY_DELAYS = (1, 2, 4, 8, 16)  # 5 attempts with exponential backoff
+    _CHAT_RETRY_DELAYS = (2, 4, 8, 16, 30)  # 5 attempts with exponential backoff (tuned for slow providers)
     _TRANSIENT_ERROR_MARKERS = (
         "429",
         "rate limit",

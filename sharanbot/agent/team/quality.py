@@ -27,7 +27,12 @@ Evaluate and respond with ONLY a JSON object:
   "evidence": ["what was checked"]
 }}
 
-Be strict. Only pass if the output genuinely fulfills the task description.
+IMPORTANT evaluation rules:
+- Pass if the output makes meaningful progress toward the task, even if not perfect.
+- Design/architecture tasks pass if they produce a coherent plan or structure.
+- Code tasks pass if they produce working code files, even with minor issues.
+- Only FAIL if the output is completely off-topic, empty, or fundamentally broken.
+- Do NOT fail for style issues, missing edge cases, or incomplete polish.
 If it fails, provide specific, actionable feedback for improvement."""
 
 

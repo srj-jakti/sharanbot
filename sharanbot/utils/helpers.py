@@ -295,6 +295,15 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     _write(None, workspace / "memory" / "HISTORY.md")
     (workspace / "skills").mkdir(exist_ok=True)
 
+    # Sync bundled agent profiles to plugins/agents/
+    agents_tpl = tpl / "agents"
+    if agents_tpl.is_dir():
+        agents_dest = workspace / "plugins" / "agents"
+        agents_dest.mkdir(parents=True, exist_ok=True)
+        for item in agents_tpl.iterdir():
+            if item.name.endswith(".yaml"):
+                _write(item, agents_dest / item.name)
+
     if added and not silent:
         from rich.console import Console
         for name in added:
